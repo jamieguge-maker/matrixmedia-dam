@@ -2,10 +2,38 @@
   <div class="dam-settings">
     <el-card shadow="never" class="dam-settings__card">
       <div slot="header" class="dam-settings__head">
-        <span class="dam-settings__title">DAM 服务端</span>
-        <el-tag :type="loggedIn ? 'success' : 'info'" size="mini">
-          {{ loggedIn ? "已登录" : "未登录" }}
+        <span class="dam-settings__title">DAM 账号</span>
+        <el-tag :type="user ? 'success' : 'info'" size="mini">
+          {{ user ? "已登录" : "未登录" }}
         </el-tag>
+      </div>
+
+      <el-descriptions v-if="user" :column="2" border size="small">
+        <el-descriptions-item label="姓名">{{ user.displayName || user.username }}</el-descriptions-item>
+        <el-descriptions-item label="角色">{{ roleLabel(user.role) }}</el-descriptions-item>
+        <el-descriptions-item label="部门">{{ user.departmentName || "-" }}</el-descriptions-item>
+        <el-descriptions-item label="用户名">{{ user.username }}</el-descriptions-item>
+      </el-descriptions>
+
+      <div class="dam-settings__actions">
+        <el-button v-if="user" size="small" @click="logout">退出登录</el-button>
+        <el-button v-else type="primary" size="small" @click="go('/dam/login')">去登录</el-button>
+        <el-button size="small" :loading="loading" @click="reload">刷新状态</el-button>
+      </div>
+
+      <el-alert
+        v-if="session.state.lastError"
+        class="dam-settings__alert"
+        :title="session.state.lastError"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+    </el-card>
+
+    <el-card shadow="never" class="dam-settings__card">
+      <div slot="header" class="dam-settings__head">
+        <span class="dam-settings__title">服务端</span>
       </div>
 
       <el-form label-width="110px" size="small">
@@ -18,13 +46,7 @@
         </el-form-item>
       </el-form>
 
-      <el-alert
-        title="登录与素材查询将在 M1 / M2 接入"
-        type="info"
-        :closable="false"
-        show-icon
-        description="当前版本已具备壳内登录态存储（safeStorage）、配置读写与 API 地址管理；下一步接入账号密码登录与 401 处理。"
-      />
+      <p class="dam-settings__hint">修改地址后需要重新登录（令牌与服务器绑定）。</p>
     </el-card>
 
     <el-card shadow="never" class="dam-settings__card">
@@ -70,33 +92,46 @@
 
 <script>
 import { ipcRenderer } from "electron";
+import { useDamSession } from "../../store/session";
+import { resetBaseUrl } from "../../api/client";
+import { roleLabel } from "../../utils/format";
 
 export default {
   name: "DamSettingsView",
   data() {
     return {
+      session: useDamSession(),
       apiBase: "",
       info: {},
-      loggedIn: false,
-      saving: false
+      saving: false,
+      loading: false
     };
+  },
+  computed: {
+    user() {
+      return this.session.state.user;
+    }
   },
   created() {
     this.reload();
   },
   methods: {
+    roleLabel,
     async reload() {
+      this.loading = true;
       try {
-        const [config, info, session] = await Promise.all([
+        const [config, info] = await Promise.all([
           ipcRenderer.invoke("dam:config:get"),
-          ipcRenderer.invoke("dam:app:info"),
-          ipcRenderer.invoke("dam:session:get")
+          ipcRenderer.invoke("dam:app:info")
         ]);
         this.apiBase = (config && config.apiBase) || "";
         this.info = info || {};
-        this.loggedIn = Boolean(session && session.token);
+        // 顺带刷新一次账号信息（令牌失效时会被清掉）
+        await this.session.restore(true);
       } catch (error) {
         this.$message.error("读取配置失败：" + ((error && error.message) || error));
+      } finally {
+        this.loading = false;
       }
     },
     async saveConfig() {
@@ -109,15 +144,28 @@ export default {
         this.$message.warning("API 地址需以 http(s):// 开头");
         return;
       }
+
+      const changed = value !== this.apiBase || value !== (this.session.state.baseUrl || "");
       this.saving = true;
       try {
         await ipcRenderer.invoke("dam:config:set", { apiBase: value });
-        this.$message.success("已保存（下次请求生效）");
+        resetBaseUrl();
+        this.$message.success("已保存");
+        if (changed && this.user) {
+          await this.session.logout();
+          this.$message.info("服务端地址已变更，请重新登录");
+          this.go("/dam/login");
+        }
       } catch (error) {
         this.$message.error("保存失败：" + ((error && error.message) || error));
       } finally {
         this.saving = false;
       }
+    },
+    async logout() {
+      await this.session.logout();
+      this.$message.success("已退出登录");
+      this.go("/dam/login");
     },
     go(path) {
       if (this.$route.path !== path) this.$router.push(path).catch(() => {});
@@ -164,6 +212,22 @@ export default {
     color: $menuMuted;
     line-height: 1.8;
     font-size: 13px;
+  }
+
+  &__hint {
+    margin: 0;
+    color: $menuMuted;
+    font-size: 12px;
+  }
+
+  &__actions {
+    margin-top: 14px;
+    display: flex;
+    gap: 10px;
+  }
+
+  &__alert {
+    margin-top: 12px;
   }
 
   &__links {

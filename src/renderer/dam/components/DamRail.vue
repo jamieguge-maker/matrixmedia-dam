@@ -1,5 +1,5 @@
 <template>
-  <aside class="dam-rail">
+  <aside v-if="!hideRail" class="dam-rail">
     <div class="dam-rail__brand">
       <span class="dam-rail__brand-main">古希奥 DAM</span>
       <span class="dam-rail__brand-sub">素材与分发</span>
@@ -81,6 +81,9 @@ export default {
   computed: {
     currentPath() {
       return this.$route.path;
+    },
+    hideRail() {
+      return Boolean(this.$route.meta && this.$route.meta.hideRail);
     }
   },
   watch: {

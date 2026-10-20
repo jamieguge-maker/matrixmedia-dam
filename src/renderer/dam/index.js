@@ -8,10 +8,12 @@
  * 因此这里 push 进去的 /dam 会被自动注册。
  */
 
-import { constantRouterMap } from "@/router";
+import router, { constantRouterMap } from "@/router";
 import Vue from "vue";
 import damChildren from "./router";
 import DamRail from "./components/DamRail.vue";
+import { useDamSession } from "./store/session";
+import { onUnauthorized } from "./api/client";
 
 let registered = false;
 
@@ -29,6 +31,33 @@ export function registerDamModule() {
     // noSlide：DAM 页面的导航由左侧主导航承担，不再叠加上游 Sidebar
     meta: { navModule: "dam", title: "DAM 工作区", noSlide: true },
     children: damChildren
+  });
+
+  installGuard();
+}
+
+/** DAM 页面需要登录；登录页与「未登录时的错误提示」由页面自己处理 */
+function installGuard() {
+  const session = useDamSession();
+
+  router.beforeEach(async (to, from, next) => {
+    if (!to.path.startsWith("/dam")) return next();
+    if (to.path === "/dam/login") return next();
+
+    const ok = await session.restore();
+    if (ok) return next();
+
+    next({ path: "/dam/login", query: { redirect: to.fullPath } });
+  });
+
+  // 任意请求返回 401：回登录页，并记住当前页面
+  onUnauthorized(() => {
+    const current = router.currentRoute;
+    if (!current || !current.path || !current.path.startsWith("/dam")) return;
+    if (current.path === "/dam/login") return;
+    router
+      .replace({ path: "/dam/login", query: { redirect: current.fullPath } })
+      .catch(() => {});
   });
 }
 

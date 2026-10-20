@@ -53,6 +53,9 @@ node scripts/dam-anchors.mjs --report
 | 壳内路由与页面 | `src/renderer/dam/**`     | `constantRouterMap.push` 注册 `/dam`                                  |
 | 左侧主导航     | `src/renderer/dam/components/DamRail.vue` | 工作区 + 系统设置两组；隐藏上游顶部菜单；矩媒页面归到系统设置 |
 | 添加媒体账号   | `src/renderer/dam/components/AddAccountDialog.vue` | 复刻 Navbar 的新增账号流程，避免隐藏顶栏后功能缺失 |
+| DAM API 客户端 | `src/renderer/dam/api/client.js` | 统一超时 / 重试 / 401；登录接口的 401 不当作会话过期 |
+| 登录态         | `src/renderer/dam/store/session.js` | 内存状态 + 主进程令牌；启动时用 `/auth/profile` 校验 |
+| 路由守卫       | `src/renderer/dam/index.js` | `/dam/**` 未登录跳 `/dam/login`，并记住 redirect |
 
 ### 身份隔离的两个坑（已处理）
 
@@ -101,3 +104,13 @@ node scripts/dam-anchors.mjs --report
 - 锚点调整：移除 Navbar 的 3 处改动，改为 `layout/index.vue` 的 `<dam-rail />`（A3）
 - 验证：9 条路由均正常、高亮正确、无控制台错误；新增账号弹窗可开可关
 - 版本：`0.12.9-dam.2`
+
+### 2026-10-20 · M1 登录与素材列表（v0.12.9-dam.3）
+
+- 新增 DAM API 客户端：超时、GET 重试、统一错误、401 清理会话
+- 新增壳内登录：账号密码、路由守卫、redirect 回跳、会话持久化（safeStorage）
+- 登录接口的 401 单独处理为「用户名或密码不正确」
+- 素材库从占位改为真实列表：统计卡片 + 表格 + 分页，数据来自 `/assets`、`/assets/stats`
+- 设置页接入账号信息、退出登录、服务端地址变更后强制重新登录
+- 验证：未登录跳登录页 ✅ / 登录成功读素材 ✅ / 重启免登录 ✅ / 退出登录 ✅ / 重新登录 ✅ / 无控制台错误 ✅
+- 版本：`0.12.9-dam.3`

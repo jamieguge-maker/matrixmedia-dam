@@ -9,6 +9,12 @@
 
 export default [
   {
+    path: "login",
+    name: "dam-login",
+    component: () => import("./views/login/index.vue"),
+    meta: { title: "登录", noSlide: true, hideRail: true }
+  },
+  {
     path: "",
     name: "dam-assets",
     component: () => import("./views/assets/index.vue"),
