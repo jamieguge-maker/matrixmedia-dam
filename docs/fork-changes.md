@@ -82,7 +82,11 @@ node scripts/dam-anchors.mjs --report
 - 上游若重命名更新 IPC 通道，接管会静默失效，需要更新 `src/main/dam/ipc.js`。
 - 构建环境要求 Node 20.x；本次用 Node 24 验证可编译，正式出包前应在 Node 20 复核。
 - `build:dir` 只编译，安装包需额外执行 `electron-builder --win --x64`。
-- 当前页面为 M0 占位页，素材 / 发布等功能按 M1～M5 实现。
+- **Windows 打包报 `Cannot create symbolic link ... darwin\...\libcrypto.dylib`**：
+  `winCodeSign-2.6.0.7z` 里含 macOS 符号链接，普通用户没有创建符号链接的特权。
+  已内置 `scripts/fix-wincodesign-cache.mjs`：解压时排除 `darwin/`，并通过 `prebuild`
+  钩子在 `yarn build` 前自动执行；也可手工运行 `yarn fix:wincodesign`。
+- 当前页面进度：M0 / M0.1 / M1 已完成，素材检索详情按 M2 继续。
 
 ---
 
@@ -113,4 +117,6 @@ node scripts/dam-anchors.mjs --report
 - 素材库从占位改为真实列表：统计卡片 + 表格 + 分页，数据来自 `/assets`、`/assets/stats`
 - 设置页接入账号信息、退出登录、服务端地址变更后强制重新登录
 - 验证：未登录跳登录页 ✅ / 登录成功读素材 ✅ / 重启免登录 ✅ / 退出登录 ✅ / 重新登录 ✅ / 无控制台错误 ✅
+- 打包：`yarn build` 通过，产物 `build\MatrixMedia-DAM-0.12.9-dam.3-win-x64.exe`（约 68 MB）
+- 打包修复：新增 `scripts/fix-wincodesign-cache.mjs`，绕过 winCodeSign 里 macOS 符号链接的解压失败
 - 版本：`0.12.9-dam.3`

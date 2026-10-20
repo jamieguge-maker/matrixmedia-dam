@@ -12,6 +12,8 @@
     "dev:download": "node .electron-vue/dev-download-server.js",
     "build:dir": "cross-env BUILD_TARGET=clean node .electron-vue/build.js",
     "prebuild:dir": "node scripts/gen-telemetry-secret.js",
+    "prebuild": "node scripts/fix-wincodesign-cache.mjs",
+    "fix:wincodesign": "node scripts/fix-wincodesign-cache.mjs",
     "rm:build": "node scripts/rm-build-dir.js",
     "build:ico": "node scripts/build-ico.js",
     "build": "yarn rm:build && yarn build:ico && yarn build:dir && electron-builder --win --x64",
