@@ -11,6 +11,9 @@
         <el-menu-item index="/video-manager">视频管理</el-menu-item>
         <el-menu-item :index="mediaMenuItemIndex">媒体平台管理</el-menu-item>
         <el-menu-item index="/project-detail">项目详情</el-menu-item>
+<!-- >>> DAM-SHELL A3-1 -->
+        <el-menu-item index="/dam">DAM</el-menu-item>
+<!-- <<< DAM-SHELL A3-1 -->
       </el-menu>
       <div class="account-actions">
         <el-button type="primary" size="small" @click="showDialog = true">
@@ -178,6 +181,12 @@ export default {
         useAppStore().setData("isRoute", "/");
         return;
       }
+// >>> DAM-SHELL A3-2
+      if (parts[0] === "dam") {
+        useAppStore().setData("isRoute", "dam");
+        return;
+      }
+// <<< DAM-SHELL A3-2
       if (parts[0] === "accountManager") {
         useAppStore().setData("isRoute", "accountManager");
         return;
@@ -194,6 +203,10 @@ export default {
         this.activeIndex = "/";
       } else if (p.startsWith("/data-stats")) {
         this.activeIndex = "/data-stats";
+// >>> DAM-SHELL A3-3
+      } else if (p.startsWith("/dam")) {
+        this.activeIndex = "/dam";
+// <<< DAM-SHELL A3-3
       } else if (p.startsWith("/accountManager") && this.getAccoutIndex) {
         this.activeIndex = this.getAccoutIndex;
       } else {

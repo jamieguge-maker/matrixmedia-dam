@@ -43,6 +43,9 @@ import {
 import { destroyAccountLoginWindows } from "./services/accountLoginWindowManager";
 import { initializeElectronRuntime } from "./services/electronStartup";
 import { reportUsageTelemetry } from "./services/usageTelemetry";
+// >>> DAM-SHELL A1
+import "./dam";
+// <<< DAM-SHELL A1
 
 const cliMode = isCliMode(process.argv);
 

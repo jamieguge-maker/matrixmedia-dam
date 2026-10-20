@@ -15,6 +15,9 @@ import "./icons";
 import "@/styles/index.scss";
 import "@/styles/dark-mode.scss";
 import "windi.css";
+// >>> DAM-SHELL A2
+import "./dam";
+// <<< DAM-SHELL A2
 
 const pinia = createPinia();
 

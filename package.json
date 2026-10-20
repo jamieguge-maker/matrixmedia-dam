@@ -1,8 +1,8 @@
 {
-  "name": "matrix-video",
-  "version": "0.12.9",
+  "name": "matrixmedia-dam",
+  "version": "0.12.9-dam.1",
   "author": "lhl",
-  "description": "自媒体免费开源矩阵工具",
+  "description": "矩媒（DAM 版）：矩媒薄壳 + 古希奥 DAM 素材与发布集成",
   "license": "GPL-2.0-only",
   "main": "./dist/electron/main.js",
   "scripts": {
@@ -86,10 +86,10 @@
         "url": "http://127.0.0.1"
       }
     ],
-    "productName": "矩媒",
-    "executableName": "matrixmedia",
-    "artifactName": "MatrixMedia-${version}-${os}-${arch}.${ext}",
-    "appId": "com.matrix.video",
+    "productName": "矩媒（DAM 版）",
+    "executableName": "matrixmedia-dam",
+    "artifactName": "MatrixMedia-DAM-${version}-${os}-${arch}.${ext}",
+    "appId": "com.guocio.matrix.dam",
     "directories": {
       "output": "build",
       "buildResources": "lib/icons"
@@ -170,7 +170,7 @@
       ]
     },
     "appImage": {
-      "artifactName": "MatrixMedia-${version}-${os}-${arch}.AppImage"
+      "artifactName": "MatrixMedia-DAM-${version}-${os}-${arch}.AppImage"
     }
   },
   "dependencies": {
