@@ -63,4 +63,9 @@ function installGuard() {
 
 registerDamModule();
 
+// 窗口标题跟随二改版身份（index.html 里仍是上游的 matrix-video）
+if (typeof document !== "undefined") {
+  document.title = "矩媒（DAM 版）";
+}
+
 export default registerDamModule;
