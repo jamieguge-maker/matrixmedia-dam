@@ -6,15 +6,18 @@
 
 ---
 
-## 1. 锚点（仅 3 个文件、12 行以内）
+## 1. 锚点（仅 3 个文件、10 行以内）
 
-| 编号 | 文件                                        | 位置                                             | 内容                                                     |
-| ---- | ------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
-| A1   | `src/main/index.js`                         | 其它 import 之后、`cliMode` 判断之前              | `import "./dam";`                                        |
-| A2   | `src/renderer/main.js`                      | `import "windi.css";` 之后                        | `import "./dam";`                                        |
-| A3-1 | `src/renderer/layout/components/Navbar.vue` | `项目详情` 菜单项之后                             | `<el-menu-item index="/dam">DAM</el-menu-item>`           |
-| A3-2 | 同上                                        | `applyIsRouteFromPath` 的 accountManager 分支之前 | `parts[0] === "dam"` → `isRoute = "dam"`                  |
-| A3-3 | 同上                                        | `syncActiveIndexToCurrentRoute` 的 accountManager 分支之前 | `p.startsWith("/dam")` → `activeIndex = "/dam"` |
+| 编号 | 文件                          | 位置                                  | 内容                     |
+| ---- | ----------------------------- | ------------------------------------- | ------------------------ |
+| A1   | `src/main/index.js`           | 其它 import 之后、`cliMode` 判断之前   | `import "./dam";`        |
+| A2   | `src/renderer/main.js`        | `import "windi.css";` 之后             | `import "./dam";`        |
+| A3   | `src/renderer/layout/index.vue` | 内容区 `<sidebar>` 之前               | `<dam-rail />`           |
+
+> 顶部导航（`Navbar.vue`）**不再改动**：左侧主导航接管菜单后，由 `DamRail.vue`
+> 里的全局样式把 `.navbar-header-fixed` 隐藏。
+> 上游 Sidebar 保留，仅用于「账号数据 / 媒体平台管理」这类需要分组二级导航的页面；
+> DAM 页面通过 `meta.noSlide` 关闭它，避免与左侧主导航重复。
 
 校验：
 
@@ -48,6 +51,8 @@ node scripts/dam-anchors.mjs --report
 | 壳内配置       | `src/main/dam/config.js`  | `userData/dam-config.json`（API 地址、同步间隔）                      |
 | 壳内 IPC       | `src/main/dam/ipc.js`     | 统一 `dam:*` 前缀                                                     |
 | 壳内路由与页面 | `src/renderer/dam/**`     | `constantRouterMap.push` 注册 `/dam`                                  |
+| 左侧主导航     | `src/renderer/dam/components/DamRail.vue` | 工作区 + 系统设置两组；隐藏上游顶部菜单；矩媒页面归到系统设置 |
+| 添加媒体账号   | `src/renderer/dam/components/AddAccountDialog.vue` | 复刻 Navbar 的新增账号流程，避免隐藏顶栏后功能缺失 |
 
 ### 身份隔离的两个坑（已处理）
 
@@ -86,3 +91,13 @@ node scripts/dam-anchors.mjs --report
 - 锚点：全部新插入
 - 验证：锚点 check ✅ / `yarn build:dir` ✅ / CLI `accounts` ✅ / 官方四页 ✅ / 壳内六页 ✅ / 更新接管 ✅
 - 版本：`0.12.9-dam.1`
+
+### 2026-10-20 · 左侧主导航（v0.12.9-dam.2）
+
+- 导航改版：顶部菜单隐藏，新增 `DamRail` 左侧主导航（工作区 + 系统设置）
+- 矩媒原生页面（账号数据 / 视频管理 / 媒体平台管理 / 项目详情）归入「系统设置」分组
+- DAM 页面加 `meta.noSlide`，避免左侧主导航与上游 Sidebar 重复
+- 新增「添加媒体账号」弹窗，补上隐藏顶栏后缺失的入口
+- 锚点调整：移除 Navbar 的 3 处改动，改为 `layout/index.vue` 的 `<dam-rail />`（A3）
+- 验证：9 条路由均正常、高亮正确、无控制台错误；新增账号弹窗可开可关
+- 版本：`0.12.9-dam.2`

@@ -4,6 +4,9 @@
       <navbar></navbar>
       <div class="container-set flex">
         <!-- {{ route }} -->
+<!-- >>> DAM-SHELL A3 -->
+        <dam-rail />
+<!-- <<< DAM-SHELL A3 -->
         <sidebar
           class="sidebar-container"
           v-if="!$route.meta.noSlide"

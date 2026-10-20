@@ -33,34 +33,12 @@ const ANCHORS = [
     body: ['import "./dam";']
   },
   {
-    id: "A3-1",
-    file: "src/renderer/layout/components/Navbar.vue",
-    summary: "顶部导航增加 DAM 入口",
+    id: "A3",
+    file: "src/renderer/layout/index.vue",
+    summary: "在内容区左侧插入 DAM 主导航",
     comment: "html",
-    insertAfter: '<el-menu-item index="/project-detail">项目详情</el-menu-item>',
-    body: ['        <el-menu-item index="/dam">DAM</el-menu-item>']
-  },
-  {
-    id: "A3-2",
-    file: "src/renderer/layout/components/Navbar.vue",
-    summary: "路由切换时把 isRoute 切到 dam",
-    insertBefore: 'if (parts[0] === "accountManager") {',
-    body: [
-      '      if (parts[0] === "dam") {',
-      '        useAppStore().setData("isRoute", "dam");',
-      "        return;",
-      "      }"
-    ]
-  },
-  {
-    id: "A3-3",
-    file: "src/renderer/layout/components/Navbar.vue",
-    summary: "顶部菜单高亮映射到 /dam",
-    insertBefore: '      } else if (p.startsWith("/accountManager") && this.getAccoutIndex) {',
-    body: [
-      '      } else if (p.startsWith("/dam")) {',
-      '        this.activeIndex = "/dam";'
-    ]
+    insertBefore: "<sidebar",
+    body: ["        <dam-rail />"]
   }
 ];
 

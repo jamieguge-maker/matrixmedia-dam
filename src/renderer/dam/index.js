@@ -9,7 +9,9 @@
  */
 
 import { constantRouterMap } from "@/router";
+import Vue from "vue";
 import damChildren from "./router";
+import DamRail from "./components/DamRail.vue";
 
 let registered = false;
 
@@ -17,11 +19,15 @@ export function registerDamModule() {
   if (registered) return;
   registered = true;
 
+  // 左侧主导航：注册成全局组件，由 layout 的锚点 A3 挂载
+  Vue.component("dam-rail", DamRail);
+
   constantRouterMap.push({
     path: "/dam",
     name: "dam",
     component: () => import("@/layout"),
-    meta: { navModule: "dam", title: "DAM 工作区" },
+    // noSlide：DAM 页面的导航由左侧主导航承担，不再叠加上游 Sidebar
+    meta: { navModule: "dam", title: "DAM 工作区", noSlide: true },
     children: damChildren
   });
 }
