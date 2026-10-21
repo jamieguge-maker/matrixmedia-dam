@@ -59,6 +59,9 @@ node scripts/dam-anchors.mjs --report
 | 素材检索       | `src/renderer/dam/views/assets/index.vue` | 关键词 / 板块 / 系列 / 品类 / 类型 / 语言 / 尺寸 + 快捷筛选 |
 | 缩略图         | `src/renderer/dam/api/assets.js` | 批量 `POST /assets/thumb-urls`，整页一次签发 |
 | 素材详情       | `src/renderer/dam/components/AssetDetailDialog.vue` | 预览主文件/封面 + 元数据 + 发布记录 |
+| 发布中心       | `src/renderer/dam/views/publish/index.vue` | 选素材 → 选账号 → 文案 → 时间 → 提交 → 结果 |
+| 发布链路       | `src/renderer/dam/api/publish.js`、`api/matrixmedia.js` | 先落记录、调本机 `/publish`、回写状态 |
+| 素材选择器     | `src/renderer/dam/components/AssetPickerDialog.vue` | 关键词/板块筛选 + 跨页多选 |
 
 ### 身份隔离的两个坑（已处理）
 
@@ -89,7 +92,7 @@ node scripts/dam-anchors.mjs --report
   `winCodeSign-2.6.0.7z` 里含 macOS 符号链接，普通用户没有创建符号链接的特权。
   已内置 `scripts/fix-wincodesign-cache.mjs`：解压时排除 `darwin/`，并通过 `prebuild`
   钩子在 `yarn build` 前自动执行；也可手工运行 `yarn fix:wincodesign`。
-- 当前页面进度：M0 / M0.1 / M1 已完成，素材检索详情按 M2 继续。
+- 当前页面进度：M0 / M0.1 / M1 / M2 / M3 已完成，下一步 M4（发布记录与状态同步）。
 
 ---
 
@@ -132,4 +135,17 @@ node scripts/dam-anchors.mjs --report
 - 详情：弹窗预览图片/视频、完整元数据、云端路径、校验值、发布记录
 - 验证：关键词 `彭文斌` 命中 1 条；重置回 2 条；尚未发布 1 条；近 7 天 0 条；
   板块筛选（公司活动）2 条；缩略图 4 张全部加载成功；详情视频可播放；无控制台错误
+- 说明：本机「测试」分组未登录，`/publish` 会等待扫码，未做真实成功发布验证
 - 版本：`0.12.9-dam.4`
+
+### 2026-10-21 · M3 发布中心（v0.12.9-dam.5）
+
+- 选素材：弹窗支持关键词/板块筛选、跨页多选（`reserve-selection`）
+- 平台账号：按平台分组，支持整组/单账号勾选；AiToEarn 账号标注「暂不支持」
+- 文案：共用 + 按平台单独覆盖（开关切换）
+- 时间：立即 / 指定时间 / 按发布计划排期（`/publish/slots` 逐平台显示）
+- 提交链路：先 `POST /publish/records` → 调本机 `/publish` → `PATCH` 回写状态
+- 验证：账号 7 个、平台 3 个正确分组；素材多选 1 条；任务数正确；
+  抖音计划排期读出「2026-10-21 · 每周一、三 · 09:30」；未选素材时拦截提示；
+  分平台文案开关可生成独立表单；真实发布会话已落到 `publish_records`（测试记录已清理）
+- 版本：`0.12.9-dam.5`

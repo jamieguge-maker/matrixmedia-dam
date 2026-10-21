@@ -108,6 +108,18 @@ export const PLATFORM_LABEL = {
   youtube: "YouTube"
 };
 
+/** DAM 平台编码 → 矩媒平台别名 */
+export const MM_ALIAS = {
+  xiaohongshu: "xhs",
+  douyin: "dy",
+  wechat_channels: "sph",
+  kuaishou: "ks",
+  bilibili: "blbl",
+  toutiao: "tt",
+  baijiahao: "bjh",
+  fanqie: "fqsp"
+};
+
 export const PUBLISH_STATUS_LABEL = {
   draft: "草稿",
   queued: "待发布",
