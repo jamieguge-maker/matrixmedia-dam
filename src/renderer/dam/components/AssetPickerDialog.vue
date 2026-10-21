@@ -4,7 +4,6 @@
     title="选择素材"
     width="920px"
     append-to-body
-    :close-on-click-modal="false"
     @close="close"
   >
     <div class="dam-picker__filters">

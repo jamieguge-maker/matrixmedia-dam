@@ -4,7 +4,7 @@
     title="素材入库"
     width="900px"
     append-to-body
-    :close-on-click-modal="false"
+    :before-close="beforeClose"
     @close="close"
   >
     <el-form label-width="90px" size="small" class="dam-upload__form">
@@ -374,6 +374,14 @@ export default {
         return;
       }
       this.$emit("update:visible", false);
+    },
+    /** 遮罩 / Esc / 右上角关闭都走这里：上传中不允许关闭 */
+    beforeClose(done) {
+      if (this.uploading) {
+        this.$message.warning("正在上传，请等待完成后再关闭");
+        return;
+      }
+      done();
     },
     onSectionChange() {
       this.kindName = this.kindOptions[0] || "";

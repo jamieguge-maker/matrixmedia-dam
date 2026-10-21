@@ -4,8 +4,8 @@
     :visible="visible"
     width="560px"
     append-to-body
-    :close-on-click-modal="false"
     :close-on-press-escape="false"
+    :before-close="beforeClose"
     custom-class="dam-add-account-dialog"
     @close="close"
   >
@@ -111,6 +111,11 @@ export default {
     },
     close() {
       this.$emit("update:visible", false);
+    },
+    /** 遮罩点击 / 关闭按钮：提交中不允许关闭 */
+    beforeClose(done) {
+      if (this.saving) return;
+      done();
     },
     async submit() {
       const phone = String(this.phone || "").trim();
