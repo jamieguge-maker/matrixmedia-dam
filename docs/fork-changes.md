@@ -56,6 +56,9 @@ node scripts/dam-anchors.mjs --report
 | DAM API 客户端 | `src/renderer/dam/api/client.js` | 统一超时 / 重试 / 401；登录接口的 401 不当作会话过期 |
 | 登录态         | `src/renderer/dam/store/session.js` | 内存状态 + 主进程令牌；启动时用 `/auth/profile` 校验 |
 | 路由守卫       | `src/renderer/dam/index.js` | `/dam/**` 未登录跳 `/dam/login`，并记住 redirect |
+| 素材检索       | `src/renderer/dam/views/assets/index.vue` | 关键词 / 板块 / 系列 / 品类 / 类型 / 语言 / 尺寸 + 快捷筛选 |
+| 缩略图         | `src/renderer/dam/api/assets.js` | 批量 `POST /assets/thumb-urls`，整页一次签发 |
+| 素材详情       | `src/renderer/dam/components/AssetDetailDialog.vue` | 预览主文件/封面 + 元数据 + 发布记录 |
 
 ### 身份隔离的两个坑（已处理）
 
@@ -120,3 +123,13 @@ node scripts/dam-anchors.mjs --report
 - 打包：`yarn build` 通过，产物 `build\MatrixMedia-DAM-0.12.9-dam.3-win-x64.exe`（约 68 MB）
 - 打包修复：新增 `scripts/fix-wincodesign-cache.mjs`，绕过 winCodeSign 里 macOS 符号链接的解压失败
 - 版本：`0.12.9-dam.3`
+
+### 2026-10-21 · M2 素材检索（v0.12.9-dam.4）
+
+- 筛选：关键词、板块、系列/名称、品类（产品）、素材类型、语言、尺寸
+- 快捷筛选：近 7 天 / 尚未发布 / 视频缺封面 / 上传失败
+- 列表：缩略图（封面或图片，批量签名地址）、发布平台标记、素材摘要
+- 详情：弹窗预览图片/视频、完整元数据、云端路径、校验值、发布记录
+- 验证：关键词 `彭文斌` 命中 1 条；重置回 2 条；尚未发布 1 条；近 7 天 0 条；
+  板块筛选（公司活动）2 条；缩略图 4 张全部加载成功；详情视频可播放；无控制台错误
+- 版本：`0.12.9-dam.4`
