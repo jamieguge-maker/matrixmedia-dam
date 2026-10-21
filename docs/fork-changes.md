@@ -62,7 +62,7 @@ node scripts/dam-anchors.mjs --report
 | 发布中心       | `src/renderer/dam/views/publish/index.vue` | 选素材 → 选账号 → 文案 → 时间 → 提交 → 结果 |
 | 发布链路       | `src/renderer/dam/api/publish.js`、`api/matrixmedia.js` | 先落记录、调本机 `/publish`、回写状态 |
 | 素材选择器     | `src/renderer/dam/components/AssetPickerDialog.vue` | 关键词/板块筛选 + 跨页多选 |
-| 素材入库       | `src/renderer/dam/components/UploadDialog.vue` | 板块 / 系列 / 品类 / 类型 / 语言·尺寸 → 选文件 → 建记录 → 传 WPS → 回写入库 |
+| 素材入库       | `src/renderer/dam/components/UploadDialog.vue` | 板块 / 系列 / 品类 / 类型 / 语言·尺寸（多选）→ 拖拽或选文件 → 建记录 → 传 WPS → 回写入库 |
 | 选文件/哈希/上传 | `src/main/dam/upload.js` | `dam:pick-files` / `dam:hash-file` / `dam:upload-file`，流式上传并回报进度 |
 | 入库目录规则   | `src/renderer/dam/utils/assetPaths.js` | 产品：`/产品/{系列}/{品类}/{类型}/{尺寸?}/{英文版?}`；其它：`/{板块}/{名称}/{尺寸?}/{英文版?}` |
 
@@ -172,3 +172,14 @@ node scripts/dam-anchors.mjs --report
   一致；重复上传同一文件识别为「内容重复」；列表自动刷新；封面必填、路径与标题
   （含 9:16 / 英文版后缀）校验通过（测试素材与 WPS 文件已删除）
 - 版本：`0.12.9-dam.6`
+
+### 2026-10-21 · 入库弹窗交互完善（v0.12.9-dam.7）
+
+- 拖拽上传：文件可直接拖进虚线区（`dataTransfer.files` → 磁盘路径；
+  Electron 24 用 `File.path`，并预留 `webUtils.getPathForFile` 兼容 32+）
+- 语言 / 尺寸改为 version1 的多选：勾「有英文版本」多一套英文，尺寸勾几个传几套，
+  每个「语言 × 尺寸」组合各自一套文件（`正在编辑` 页签切换），取消勾选时丢弃该组合已选文件
+- 产品板块：系列与品类并排一行
+- 验证：4 个组合页签正常、拖拽入列与路径（`/产品/高升/落地灯/白底、细节图/9-16/英文版/...`）正确、
+  9:16 与 16:9 各传 1 个文件均入库（`ratio` 与目录一致），测试素材与 WPS 文件已删除
+- 版本：`0.12.9-dam.7`

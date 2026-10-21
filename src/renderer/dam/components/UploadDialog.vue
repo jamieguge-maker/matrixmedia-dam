@@ -16,7 +16,41 @@
         </el-radio-group>
       </el-form-item>
 
-      <el-form-item :label="groupLabel">
+      <!-- 产品板块：系列与品类并排一行 -->
+      <el-row v-if="section === 'product'" :gutter="12">
+        <el-col :span="12">
+          <el-form-item :label="groupLabel">
+            <el-select
+              v-model="groupName"
+              filterable
+              allow-create
+              default-first-option
+              clearable
+              :placeholder="groupPlaceholder"
+              style="width: 100%"
+            >
+              <el-option v-for="name in groupOptions" :key="name" :label="name" :value="name" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="品类">
+            <el-select
+              v-model="categoryName"
+              filterable
+              allow-create
+              default-first-option
+              clearable
+              placeholder="选择或输入品类"
+              style="width: 100%"
+            >
+              <el-option v-for="name in categoryOptions" :key="name" :label="name" :value="name" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-form-item v-else :label="groupLabel">
         <el-select
           v-model="groupName"
           filterable
@@ -30,20 +64,6 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="section === 'product'" label="品类">
-        <el-select
-          v-model="categoryName"
-          filterable
-          allow-create
-          default-first-option
-          clearable
-          placeholder="选择或输入品类"
-          style="width: 100%"
-        >
-          <el-option v-for="name in categoryOptions" :key="name" :label="name" :value="name" />
-        </el-select>
-      </el-form-item>
-
       <el-form-item label="素材类型">
         <el-radio-group v-model="kindName">
           <el-radio-button v-for="name in kindOptions" :key="name" :label="name">
@@ -52,22 +72,55 @@
         </el-radio-group>
       </el-form-item>
 
-      <el-form-item label="语言 / 尺寸">
-        <el-select v-model="language" style="width: 120px">
-          <el-option label="中文版" value="zh" />
-          <el-option label="英文版" value="en" />
-        </el-select>
-        <el-select v-model="ratio" clearable placeholder="不区分尺寸" style="width: 150px; margin-left: 8px">
-          <el-option label="9:16" value="9:16" />
-          <el-option label="3:4" value="3:4" />
-          <el-option label="16:9" value="16:9" />
-        </el-select>
+      <el-form-item label="语言版本">
+        <el-checkbox v-model="hasEnglish">本项目有英文版本</el-checkbox>
+        <span class="dam-upload__hint">
+          勾选后英文版落在同一目录下的「英文版」文件夹，素材单独入库、可单独发布
+        </span>
+      </el-form-item>
+
+      <el-form-item label="尺寸版本">
+        <el-checkbox-group v-model="ratios">
+          <el-checkbox v-for="ratio in ratioOptions" :key="ratio" :label="ratio">
+            {{ ratio }}
+          </el-checkbox>
+        </el-checkbox-group>
+        <span class="dam-upload__hint">
+          勾几个就传几套（各配自己的视频与封面），落在 9-16 / 3-4 / 16-9 文件夹里；都不勾 = 不区分尺寸
+        </span>
+      </el-form-item>
+
+      <el-form-item v-if="combos.length > 1" label="正在编辑">
+        <el-button
+          v-for="combo in combos"
+          :key="combo.key"
+          size="mini"
+          :type="combo.key === activeKey ? 'primary' : 'default'"
+          class="dam-version__tab"
+          @click="activeKey = combo.key"
+        >
+          {{ versionTag(combo) }}（{{ bucketOf(combo.key).length }} 个文件）
+        </el-button>
       </el-form-item>
     </el-form>
 
     <div class="dam-upload__files">
+      <div
+        class="dam-drop"
+        :class="{ 'is-over': dragOver }"
+        @dragover.prevent="dragOver = true"
+        @dragenter.prevent="dragOver = true"
+        @dragleave.prevent="dragOver = false"
+        @drop.prevent="onDrop"
+        @click="pickMaterials"
+      >
+        <i class="el-icon-upload dam-drop__icon" />
+        <div class="dam-drop__text">把文件拖到这里，或点击选择文件</div>
+        <div class="dam-drop__hint">{{ dropHint }}</div>
+      </div>
+
       <div class="dam-upload__files-head">
-        <span>素材文件</span>
+        <span>{{ filesTitle }}</span>
         <div>
           <el-button size="mini" icon="el-icon-plus" @click="pickMaterials">选择文件</el-button>
           <el-button size="mini" icon="el-icon-picture-outline" @click="pickCoversForAllVideos">
@@ -76,7 +129,7 @@
         </div>
       </div>
 
-      <div v-if="!files.length" class="dam-upload__muted">还没有选择文件</div>
+      <div v-if="!files.length" class="dam-upload__muted">这个版本还没有文件</div>
 
       <div v-for="file in files" :key="file.path" class="dam-file">
         <div class="dam-file__main">
@@ -120,7 +173,7 @@
 </template>
 
 <script>
-import { ipcRenderer } from "electron";
+import { ipcRenderer, webUtils } from "electron";
 import {
   appendUploadLog,
   assetGroups,
@@ -131,6 +184,7 @@ import {
 } from "../api/assets";
 import { formatBytes, SECTION_KINDS } from "../utils/format";
 import {
+  RATIO_FOLDER,
   SECTION_GROUP_LABEL,
   SECTION_IMAGE_IS_COVER_ONLY,
   SECTION_REQUIRE_COVER,
@@ -150,6 +204,8 @@ const SECTION_TABS = [
   { value: "activity", label: "公司活动" }
 ];
 
+const RATIO_OPTIONS = Object.keys(RATIO_FOLDER);
+
 function emptyFile(item) {
   return {
     path: item.path,
@@ -164,6 +220,26 @@ function emptyFile(item) {
   };
 }
 
+function comboKey(language, ratio) {
+  return `${language}::${ratio || ""}`;
+}
+
+/**
+ * 取拖入文件的磁盘路径：
+ * Electron 24 的 File 自带 `path`；32+ 移除后改用 `webUtils.getPathForFile`。
+ */
+function diskPathOf(file) {
+  try {
+    if (webUtils && typeof webUtils.getPathForFile === "function") {
+      const resolved = webUtils.getPathForFile(file);
+      if (resolved) return resolved;
+    }
+  } catch (_) {
+    /* 忽略，回退到 file.path */
+  }
+  return file && file.path ? file.path : "";
+}
+
 export default {
   name: "DamUploadDialog",
   props: {
@@ -172,17 +248,24 @@ export default {
   data() {
     return {
       sectionTabs: SECTION_TABS,
+      ratioOptions: RATIO_OPTIONS,
       section: "product",
       groupName: "",
       categoryName: "",
       kindName: "",
-      language: "zh",
-      ratio: "",
+      hasEnglish: false,
+      ratios: [],
+      /**
+       * 文件按「语言 × 尺寸」分桶：每个组合各有一套视频与封面（与 version1 一致）。
+       * key 形如 `zh::9:16`、`en::`（尺寸为空 = 不区分尺寸）。
+       */
+      buckets: {},
+      activeKey: comboKey("zh", ""),
       groupOptions: [],
       categoryOptions: [],
-      files: [],
       uploading: false,
-      uploadedCount: 0
+      uploadedCount: 0,
+      dragOver: false
     };
   },
   computed: {
@@ -195,10 +278,34 @@ export default {
     kindOptions() {
       return SECTION_KINDS[this.section] || [];
     },
+    /** 本次要用到的全部组合：勾了英文才有英文，勾了尺寸才有尺寸 */
+    combos() {
+      const languages = this.hasEnglish ? ["zh", "en"] : ["zh"];
+      const ratios = this.ratios.length ? this.ratios.slice() : [""];
+      const list = [];
+      languages.forEach((language) => {
+        ratios.forEach((ratio) => list.push({ key: comboKey(language, ratio), language, ratio }));
+      });
+      return list;
+    },
+    activeCombo() {
+      return this.combos.find((combo) => combo.key === this.activeKey) || this.combos[0];
+    },
+    files() {
+      return this.buckets[this.activeKey] || [];
+    },
+    filesTitle() {
+      return this.combos.length > 1 ? `${this.versionTag(this.activeCombo)} 的文件` : "素材文件";
+    },
+    dropHint() {
+      const target = this.combos.length > 1 ? `当前版本：${this.versionTag(this.activeCombo)}` : "";
+      return ["支持图片 / 视频，可多选", target].filter(Boolean).join(" · ");
+    },
     summary() {
-      if (!this.files.length) return "还没有选择文件";
-      if (this.uploadedCount) return `已完成 ${this.uploadedCount} / ${this.files.length}`;
-      return `共 ${this.files.length} 个文件`;
+      const count = this.combos.reduce((sum, combo) => sum + this.bucketOf(combo.key).length, 0);
+      if (!count) return "还没有选择文件";
+      if (this.uploadedCount) return `已完成 ${this.uploadedCount} / ${count}`;
+      return `共 ${count} 个文件${this.combos.length > 1 ? `（${this.combos.length} 个版本）` : ""}`;
     }
   },
   watch: {
@@ -207,11 +314,17 @@ export default {
     },
     section() {
       this.kindName = this.kindOptions[0] || "";
+    },
+    hasEnglish() {
+      this.syncBuckets();
+    },
+    ratios() {
+      this.syncBuckets();
     }
   },
   created() {
     this.onProgress = (_event, payload) => {
-      const file = this.files.find((item) => item.path === payload.taskId);
+      const file = this.findFile(payload.taskId);
       if (file) file.percent = payload.percent;
     };
     ipcRenderer.on("dam:upload-progress", this.onProgress);
@@ -221,9 +334,37 @@ export default {
   },
   methods: {
     formatBytes,
+    findFile(taskId) {
+      const base = String(taskId || "").replace(/#cover$/, "");
+      for (const key of Object.keys(this.buckets)) {
+        const found = (this.buckets[key] || []).find((file) => file.path === base);
+        if (found) return found;
+      }
+      return null;
+    },
+    bucketOf(key) {
+      return this.buckets[key] || [];
+    },
+    ensureBucket(key) {
+      if (!this.buckets[key]) this.$set(this.buckets, key, []);
+      return this.buckets[key];
+    },
+    /** 取消勾选语言 / 尺寸后，对应组合的文件一并丢弃（与 version1 一致） */
+    syncBuckets() {
+      const valid = this.combos.map((combo) => combo.key);
+      Object.keys(this.buckets).forEach((key) => {
+        if (!valid.includes(key)) this.$delete(this.buckets, key);
+      });
+      if (!valid.includes(this.activeKey)) this.activeKey = valid[0];
+    },
+    versionTag(combo) {
+      const parts = [combo.ratio, combo.language === "en" ? "英文版" : "中文版"].filter(Boolean);
+      return parts.join(" · ");
+    },
     onOpen() {
       this.uploadedCount = 0;
       if (!this.kindName) this.kindName = this.kindOptions[0] || "";
+      this.syncBuckets();
       this.loadGroups();
       if (this.section === "product") this.loadCategories();
     },
@@ -243,11 +384,13 @@ export default {
 
       // 个人 / 活动板块里图片只能当封面，不能作为素材
       if (SECTION_IMAGE_IS_COVER_ONLY[this.section]) {
-        const images = this.files.filter((file) => isImageFile(file.name));
-        if (images.length) {
-          this.$message.warning("这个板块的图片只能当封面，已从素材列表移除");
-          this.files = this.files.filter((file) => !isImageFile(file.name));
-        }
+        let removed = false;
+        Object.keys(this.buckets).forEach((key) => {
+          const before = this.buckets[key].length;
+          this.buckets[key] = this.buckets[key].filter((file) => !isImageFile(file.name));
+          if (this.buckets[key].length !== before) removed = true;
+        });
+        if (removed) this.$message.warning("这个板块的图片只能当封面，已从素材列表移除");
       }
     },
     async loadGroups() {
@@ -282,26 +425,41 @@ export default {
           groupName: this.groupName,
           categoryName: this.categoryName,
           kindName: this.kindName,
-          language: this.language,
-          ratio: this.ratio
+          language: this.activeCombo.language,
+          ratio: this.activeCombo.ratio
         },
         file.name
       );
     },
-    segmentsFor() {
+    segmentsFor(combo) {
       return buildSegments({
         section: this.section,
         groupName: this.groupName,
         categoryName: this.categoryName,
         kindName: this.kindName,
-        language: this.language,
-        ratio: this.ratio
+        language: combo.language,
+        ratio: combo.ratio
       });
     },
     async pickMaterials() {
       const picked = await ipcRenderer.invoke("dam:pick-files", { type: "all", multiple: true });
       if (!picked || !picked.length) return;
-
+      this.acceptPicked(picked);
+    },
+    /** 拖拽上传：Electron 24 的 File.path 直接给出磁盘路径 */
+    onDrop(event) {
+      this.dragOver = false;
+      const dropped = Array.from((event.dataTransfer && event.dataTransfer.files) || []);
+      const items = dropped
+        .map((file) => ({ path: diskPathOf(file), name: file.name, size: file.size }))
+        .filter((item) => item.path);
+      if (!items.length) {
+        this.$message.warning("没能读取拖入的文件，请用「选择文件」重试");
+        return;
+      }
+      this.acceptPicked(items);
+    },
+    acceptPicked(picked) {
       let items = picked.slice();
       if (SECTION_IMAGE_IS_COVER_ONLY[this.section]) {
         const images = items.filter((item) => isImageFile(item.name));
@@ -311,12 +469,16 @@ export default {
         }
       }
 
-      const existing = new Set(this.files.map((file) => file.path));
-      items
-        .filter((item) => !existing.has(item.path))
-        .forEach((item) => this.files.push(emptyFile(item)));
+      const bucket = this.ensureBucket(this.activeKey);
+      const existing = new Set(bucket.map((file) => file.path));
+      const added = items.filter((item) => !existing.has(item.path));
+      if (!added.length) {
+        if (items.length) this.$message.info("这些文件已经在这个版本里了");
+        return;
+      }
+      added.forEach((item) => bucket.push(emptyFile(item)));
 
-      this.autoPairCovers();
+      this.autoPairCovers(bucket);
       this.suggestKind();
     },
     async pickCoversForAllVideos() {
@@ -348,11 +510,14 @@ export default {
       file.coverName = "";
       file.coverSize = 0;
     },
-    autoPairCovers() {
-      const images = this.files.filter((file) => isImageFile(file.name));
+    autoPairCovers(bucket) {
+      const images = bucket.filter((file) => isImageFile(file.name));
       if (!images.length) return;
-      const base = (name) => String(name).replace(/\.[^.]+$/, "").replace(/[-_ ]?(封面|cover|poster)$/i, "");
-      this.files
+      const base = (name) =>
+        String(name)
+          .replace(/\.[^.]+$/, "")
+          .replace(/[-_ ]?(封面|cover|poster)$/i, "");
+      bucket
         .filter((file) => isVideoFile(file.name) && !file.coverName)
         .forEach((video) => {
           const match = images.find((image) => base(image.name) === base(video.name));
@@ -375,7 +540,12 @@ export default {
       }
     },
     removeFile(file) {
-      this.files = this.files.filter((item) => item.path !== file.path);
+      const bucket = this.bucketOf(this.activeKey);
+      this.$set(
+        this.buckets,
+        this.activeKey,
+        bucket.filter((item) => item.path !== file.path)
+      );
     },
     statusText(status) {
       return (
@@ -400,12 +570,22 @@ export default {
         return "产品板块需要填写品类";
       }
       if (!this.kindName) return "请选择素材类型";
-      if (!this.files.length) return "请选择素材文件";
-      const missingCover = this.files.find((file) => this.needsCover(file) && !file.coverPath);
-      if (missingCover) return `「${missingCover.name}」还没有配封面`;
+
+      const total = this.combos.reduce((sum, combo) => sum + this.bucketOf(combo.key).length, 0);
+      if (!total) return "请选择素材文件";
+
+      for (const combo of this.combos) {
+        const missing = this.bucketOf(combo.key).find(
+          (file) => this.needsCover(file) && !file.coverPath
+        );
+        if (missing) {
+          const prefix = this.combos.length > 1 ? `${this.versionTag(combo)} ` : "";
+          return `${prefix}「${missing.name}」还没有配封面`;
+        }
+      }
       return "";
     },
-    titleFor(file, videoCount) {
+    titleFor(file, videoCount, combo) {
       const baseName = file.name.replace(/\.[^.]+$/, "");
       const fromGroup =
         ["personal", "activity"].includes(this.section) &&
@@ -416,7 +596,7 @@ export default {
           ? `${this.groupName}-${baseName}`
           : this.groupName
         : baseName;
-      const suffixes = [this.ratio, this.language === "en" ? "英文版" : null].filter(Boolean);
+      const suffixes = [combo.ratio, combo.language === "en" ? "英文版" : null].filter(Boolean);
       return suffixes.length ? `${baseTitle}（${suffixes.join(" · ")}）` : baseTitle;
     },
     sanitizeFileName(name) {
@@ -434,149 +614,159 @@ export default {
 
       this.uploading = true;
       this.uploadedCount = 0;
-      const segments = this.segmentsFor();
-      const videoCount = this.files.filter((file) => isVideoFile(file.name)).length;
+      const targets = this.combos
+        .map((combo) => ({ combo, bucket: this.bucketOf(combo.key) }))
+        .filter((target) => target.bucket.length);
 
       try {
-        for (const file of this.files) {
-          if (file.status === "success" || file.status === "duplicated") continue;
+        for (const { combo, bucket } of targets) {
+          const segments = this.segmentsFor(combo);
+          const videoCount = bucket.filter((file) => isVideoFile(file.name)).length;
 
-          const startedAt = Date.now();
-          file.status = "hashing";
-          file.message = "";
-          file.percent = 0;
+          for (const file of bucket) {
+            if (file.status === "success" || file.status === "duplicated") continue;
 
-          try {
-            const hash = await ipcRenderer.invoke("dam:hash-file", file.path);
+            const startedAt = Date.now();
+            file.status = "hashing";
+            file.message = "";
+            file.percent = 0;
 
-            if (hash.size !== file.size) file.size = hash.size;
+            try {
+              const hash = await ipcRenderer.invoke("dam:hash-file", file.path);
 
-            const existing = await findAssetByChecksum(hash.md5).catch(() => null);
-            if (existing && existing.uploadStatus === "stored") {
-              file.status = "duplicated";
-              file.message = `内容重复，已复用「${existing.title}」`;
-              this.uploadedCount += 1;
-              continue;
-            }
+              if (hash.size !== file.size) file.size = hash.size;
 
-            file.status = "uploading";
-            file.message = "创建入库记录";
-            const title = this.titleFor(file, videoCount);
-            const asset = await createAsset({
-              title,
-              description: null,
-              tags: [],
-              mediaType: mediaTypeOf(file.name),
-              fileName: file.name,
-              fileExt: extOf(file.name),
-              fileSize: hash.size,
-              checksum: hash.md5,
-              section: this.section,
-              groupName: sanitizeSegment(this.groupName),
-              categoryName: this.section === "product" ? sanitizeSegment(this.categoryName) : null,
-              kindName: this.kindName,
-              language: this.language,
-              ratio: this.ratio || null,
-              localPath: file.path,
-              storageProvider: "wps",
-              uploadStatus: "uploading"
-            });
+              const existing = await findAssetByChecksum(hash.md5).catch(() => null);
+              if (existing && existing.uploadStatus === "stored") {
+                file.status = "duplicated";
+                file.message = `内容重复，已复用「${existing.title}」`;
+                this.uploadedCount += 1;
+                continue;
+              }
 
-            let coverUpload = null;
-            if (file.coverPath) {
-              file.message = "上传封面图";
-              const coverResult = await ipcRenderer.invoke("dam:upload-file", {
-                taskId: file.path + "#cover",
-                filePath: file.coverPath,
-                fileName: this.sanitizeFileName(file.coverName || "cover"),
+              file.status = "uploading";
+              file.message = "创建入库记录";
+              const title = this.titleFor(file, videoCount, combo);
+              const asset = await createAsset({
+                title,
+                description: null,
+                tags: [],
+                mediaType: mediaTypeOf(file.name),
+                fileName: file.name,
+                fileExt: extOf(file.name),
+                fileSize: hash.size,
+                checksum: hash.md5,
+                section: this.section,
+                groupName: sanitizeSegment(this.groupName),
+                categoryName: this.section === "product" ? sanitizeSegment(this.categoryName) : null,
+                kindName: this.kindName,
+                language: combo.language,
+                ratio: combo.ratio || null,
+                localPath: file.path,
+                storageProvider: "wps",
+                uploadStatus: "uploading"
+              });
+
+              let coverUpload = null;
+              if (file.coverPath) {
+                file.message = "上传封面图";
+                const coverResult = await ipcRenderer.invoke("dam:upload-file", {
+                  taskId: file.path + "#cover",
+                  filePath: file.coverPath,
+                  fileName: this.sanitizeFileName(file.coverName || "cover"),
+                  folderPath: segments
+                });
+                if (!coverResult.ok) {
+                  throw new Error("封面图上传失败：" + (coverResult.message || "未知错误"));
+                }
+                coverUpload = coverResult.data;
+              }
+
+              file.message = "上传中";
+              const uploadResult = await ipcRenderer.invoke("dam:upload-file", {
+                taskId: file.path,
+                filePath: file.path,
+                fileName: this.sanitizeFileName(file.name),
                 folderPath: segments
               });
-              if (!coverResult.ok) {
-                throw new Error("封面图上传失败：" + (coverResult.message || "未知错误"));
+              if (!uploadResult.ok) {
+                throw new Error(uploadResult.message || "上传失败");
               }
-              coverUpload = coverResult.data;
+
+              const data = uploadResult.data || {};
+              const finalName = data.name || file.name;
+
+              file.status = "saving";
+              file.message = "保存入库信息";
+
+              const storagePath = "/" + [...segments, finalName].join("/");
+              const payload = {
+                storageProvider: "wps",
+                storageKey: data.fileId || null,
+                storagePath,
+                storageParentId: data.parentId || null,
+                storageDriveId: data.driveId || null,
+                storageUrl: null,
+                uploadStatus: "stored",
+                uploadError: null
+              };
+
+              if (coverUpload) {
+                payload.coverFileName = coverUpload.name || file.coverName;
+                payload.coverFileSize = file.coverSize || 0;
+                payload.coverStorageKey = coverUpload.fileId || null;
+                payload.coverStorageParentId = coverUpload.parentId || null;
+                payload.coverStorageDriveId = coverUpload.driveId || null;
+                payload.coverStoragePath =
+                  "/" + [...segments, coverUpload.name || file.coverName].join("/");
+              }
+
+              await patchAssetStorage(asset.id, payload);
+
+              await appendUploadLog({
+                assetId: asset.id,
+                action: "upload",
+                provider: "wps",
+                sourcePath: file.path,
+                targetPath: storagePath,
+                fileName: finalName,
+                fileSize: hash.size,
+                checksum: hash.md5,
+                status: "success",
+                durationMs: Date.now() - startedAt
+              }).catch(() => {});
+
+              file.status = "success";
+              file.message = "已入库";
+              file.percent = 100;
+              this.uploadedCount += 1;
+            } catch (error) {
+              const message = (error && error.message) || "上传失败";
+              file.status = "failed";
+              file.message = message;
+              await appendUploadLog({
+                action: "upload",
+                provider: "wps",
+                sourcePath: file.path,
+                targetPath: this.pathFor(file),
+                fileName: file.name,
+                fileSize: file.size,
+                status: "failed",
+                message,
+                durationMs: Date.now() - startedAt
+              }).catch(() => {});
             }
-
-            file.message = "上传中";
-            const uploadResult = await ipcRenderer.invoke("dam:upload-file", {
-              taskId: file.path,
-              filePath: file.path,
-              fileName: this.sanitizeFileName(file.name),
-              folderPath: segments
-            });
-            if (!uploadResult.ok) {
-              throw new Error(uploadResult.message || "上传失败");
-            }
-
-            const data = uploadResult.data || {};
-            const finalName = data.name || file.name;
-
-            file.status = "saving";
-            file.message = "保存入库信息";
-
-            const storagePath = "/" + [...segments, finalName].join("/");
-            const payload = {
-              storageProvider: "wps",
-              storageKey: data.fileId || null,
-              storagePath,
-              storageParentId: data.parentId || null,
-              storageDriveId: data.driveId || null,
-              storageUrl: null,
-              uploadStatus: "stored",
-              uploadError: null
-            };
-
-            if (coverUpload) {
-              payload.coverFileName = coverUpload.name || file.coverName;
-              payload.coverFileSize = file.coverSize || 0;
-              payload.coverStorageKey = coverUpload.fileId || null;
-              payload.coverStorageParentId = coverUpload.parentId || null;
-              payload.coverStorageDriveId = coverUpload.driveId || null;
-              payload.coverStoragePath =
-                "/" + [...segments, coverUpload.name || file.coverName].join("/");
-            }
-
-            await patchAssetStorage(asset.id, payload);
-
-            await appendUploadLog({
-              assetId: asset.id,
-              action: "upload",
-              provider: "wps",
-              sourcePath: file.path,
-              targetPath: storagePath,
-              fileName: finalName,
-              fileSize: hash.size,
-              checksum: hash.md5,
-              status: "success",
-              durationMs: Date.now() - startedAt
-            }).catch(() => {});
-
-            file.status = "success";
-            file.message = "已入库";
-            file.percent = 100;
-            this.uploadedCount += 1;
-          } catch (error) {
-            const message = (error && error.message) || "上传失败";
-            file.status = "failed";
-            file.message = message;
-            await appendUploadLog({
-              action: "upload",
-              provider: "wps",
-              sourcePath: file.path,
-              targetPath: this.pathFor(file),
-              fileName: file.name,
-              fileSize: file.size,
-              status: "failed",
-              message,
-              durationMs: Date.now() - startedAt
-            }).catch(() => {});
           }
         }
 
         if (this.uploadedCount > 0) {
           this.$emit("uploaded");
         }
-        const failed = this.files.filter((file) => file.status === "failed").length;
+        const failed = this.combos.reduce(
+          (sum, combo) =>
+            sum + this.bucketOf(combo.key).filter((file) => file.status === "failed").length,
+          0
+        );
         if (failed) {
           this.$message.warning(`完成：成功 ${this.uploadedCount} 个，失败 ${failed} 个`);
         } else if (this.uploadedCount) {
@@ -598,6 +788,12 @@ export default {
     margin-bottom: 8px;
   }
 
+  &__hint {
+    margin-left: 10px;
+    font-size: 12px;
+    color: $menuMuted;
+  }
+
   &__files {
     max-height: 380px;
     overflow-y: auto;
@@ -610,7 +806,7 @@ export default {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 10px;
+    margin: 12px 0 10px;
     font-size: 13px;
     font-weight: 600;
     color: $menuText;
@@ -630,6 +826,48 @@ export default {
     margin-right: auto;
     float: left;
     line-height: 32px;
+    font-size: 12px;
+    color: $menuMuted;
+  }
+}
+
+.dam-version {
+  &__tab + &__tab {
+    margin-left: 6px;
+  }
+}
+
+.dam-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  border: 1px dashed $borderColor;
+  border-radius: 8px;
+  background: $cardBg;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+
+  &:hover,
+  &.is-over {
+    border-color: $primaryColor;
+    background: rgba(64, 158, 255, 0.06);
+  }
+
+  &__icon {
+    font-size: 26px;
+    color: $menuMuted;
+  }
+
+  &__text {
+    margin-top: 6px;
+    font-size: 13px;
+    color: $menuText;
+  }
+
+  &__hint {
+    margin-top: 4px;
     font-size: 12px;
     color: $menuMuted;
   }
