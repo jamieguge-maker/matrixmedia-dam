@@ -62,6 +62,9 @@ node scripts/dam-anchors.mjs --report
 | 发布中心       | `src/renderer/dam/views/publish/index.vue` | 选素材 → 选账号 → 文案 → 时间 → 提交 → 结果 |
 | 发布链路       | `src/renderer/dam/api/publish.js`、`api/matrixmedia.js` | 先落记录、调本机 `/publish`、回写状态 |
 | 素材选择器     | `src/renderer/dam/components/AssetPickerDialog.vue` | 关键词/板块筛选 + 跨页多选 |
+| 素材入库       | `src/renderer/dam/components/UploadDialog.vue` | 板块 / 系列 / 品类 / 类型 / 语言·尺寸 → 选文件 → 建记录 → 传 WPS → 回写入库 |
+| 选文件/哈希/上传 | `src/main/dam/upload.js` | `dam:pick-files` / `dam:hash-file` / `dam:upload-file`，流式上传并回报进度 |
+| 入库目录规则   | `src/renderer/dam/utils/assetPaths.js` | 产品：`/产品/{系列}/{品类}/{类型}/{尺寸?}/{英文版?}`；其它：`/{板块}/{名称}/{尺寸?}/{英文版?}` |
 
 ### 身份隔离的两个坑（已处理）
 
@@ -78,6 +81,7 @@ node scripts/dam-anchors.mjs --report
 | 配置             | 说明                                                                                   |
 | ---------------- | -------------------------------------------------------------------------------------- |
 | `DAM_UPDATE_URL` | 公司更新清单地址（https），格式兼容 GitHub Release latest；未设置时不检查更新           |
+| `DAM_PROFILE_DIR`| 覆盖 userData 目录，用于并行跑第二个实例（自测 / 双账号），默认 `%APPDATA%/matrixmedia-dam` |
 | `dam-config.json`| `apiBase`（默认 `https://dam.guocio.cn/api`）、`syncIntervalMin`                        |
 
 ---
@@ -92,7 +96,7 @@ node scripts/dam-anchors.mjs --report
   `winCodeSign-2.6.0.7z` 里含 macOS 符号链接，普通用户没有创建符号链接的特权。
   已内置 `scripts/fix-wincodesign-cache.mjs`：解压时排除 `darwin/`，并通过 `prebuild`
   钩子在 `yarn build` 前自动执行；也可手工运行 `yarn fix:wincodesign`。
-- 当前页面进度：M0 / M0.1 / M1 / M2 / M3 已完成，下一步 M4（发布记录与状态同步）。
+- 当前页面进度：M0 / M0.1 / M1 / M2 / M3 已完成，素材入库（原 M6）已提前完成，下一步 M4（发布记录与状态同步）。
 
 ---
 
@@ -149,3 +153,22 @@ node scripts/dam-anchors.mjs --report
   抖音计划排期读出「2026-10-21 · 每周一、三 · 09:30」；未选素材时拦截提示；
   分平台文案开关可生成独立表单；真实发布会话已落到 `publish_records`（测试记录已清理）
 - 版本：`0.12.9-dam.5`
+
+### 2026-10-21 · 素材入库 / 上传 WPS（v0.12.9-dam.6）
+
+- 入口：素材库右上「上传素材」按钮（`src/renderer/dam/views/assets/index.vue`）
+- 主进程能力（`src/main/dam/upload.js`）：
+  - `dam:pick-files`：系统选文件（图片 / 视频 / 全部）
+  - `dam:hash-file`：流式计算 MD5 + SHA256
+  - `dam:upload-file`：流式 POST `/wps/upload`（`x-file-name` / `x-folder-path`），
+    进度经 `dam:upload-progress` 回报，渲染层不碰文件内容
+- 入库流程（对齐 version1）：查重 `/assets/by-checksum/:md5` → `POST /assets`（uploading）
+  → 传封面 → 传主文件 → `POST /assets/:id/storage` → `POST /logs`
+- 目录规则：产品 `/产品/{系列}/{品类}/{类型}/{尺寸?}/{英文版?}`；其它板块
+  `/{板块}/{名称}/{尺寸?}/{英文版?}`；个人 / 活动板块图片仅可作封面，视频必须配封面
+- 顺带修复：深链启动（直接停在 `/dam/**`）时 permission.js 重建 matcher 之前的首屏
+  会残留 404，改为在 dam 模块注册时提前重建一次 matcher
+- 验证：真实账号上传 1 个小文件 → `已入库`，WPS fileId 与 `/产品/高升/落地灯/白底、细节图/...`
+  一致；重复上传同一文件识别为「内容重复」；列表自动刷新；封面必填、路径与标题
+  （含 9:16 / 英文版后缀）校验通过（测试素材与 WPS 文件已删除）
+- 版本：`0.12.9-dam.6`

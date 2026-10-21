@@ -33,7 +33,8 @@ if (typeof app.setName === "function" && app.getName() !== APP_NAME) {
  * 必须显式 setPath，否则会和官方版共用登录 Cookie 与本地数据。
  */
 try {
-  const target = path.join(app.getPath("appData"), APP_NAME);
+  const override = process.env.DAM_PROFILE_DIR;
+  const target = override ? path.resolve(override) : path.join(app.getPath("appData"), APP_NAME);
   if (app.getPath("userData") !== target) {
     app.setPath("userData", target);
   }

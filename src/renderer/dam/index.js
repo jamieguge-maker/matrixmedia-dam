@@ -10,6 +10,7 @@
 
 import router, { constantRouterMap } from "@/router";
 import Vue from "vue";
+import VueRouter from "vue-router";
 import damChildren from "./router";
 import DamRail from "./components/DamRail.vue";
 import { useDamSession } from "./store/session";
@@ -34,6 +35,17 @@ export function registerDamModule() {
   });
 
   installGuard();
+
+  /**
+   * 深链启动（直接打开 /dam/xxx）时，第一次导航在 permission.js 重建 matcher 之前就完成了，
+   * 那时 /dam 还没进 matcher，页面会先渲染 404 且不会被替换回来。
+   * 这里提前重建一次 matcher，让首屏就能正确匹配。
+   */
+  try {
+    router.matcher = new VueRouter({ routes: constantRouterMap }).matcher;
+  } catch (error) {
+    console.warn("[dam] 重建路由表失败：", error && error.message);
+  }
 }
 
 /** DAM 页面需要登录；登录页与「未登录时的错误提示」由页面自己处理 */

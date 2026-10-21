@@ -45,3 +45,20 @@ export function assetPublishRecords(assetId) {
 export function categoryTree(section) {
   return api.get("/categories/sections" + buildQuery({ section }));
 }
+
+/** 按校验值查重（上传前用） */
+export function findAssetByChecksum(checksum) {
+  return api.get(`/assets/by-checksum/${encodeURIComponent(checksum)}`);
+}
+
+export function createAsset(payload) {
+  return api.post("/assets", payload);
+}
+
+export function patchAssetStorage(id, payload) {
+  return api.post(`/assets/${id}/storage`, payload);
+}
+
+export function appendUploadLog(payload) {
+  return api.post("/logs", payload);
+}

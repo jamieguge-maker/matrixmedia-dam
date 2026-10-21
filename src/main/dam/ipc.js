@@ -8,6 +8,7 @@ import { app, ipcMain, shell } from "electron";
 import { getConfig, setConfig } from "./config";
 import { readSession, writeSession, clearSession } from "./session";
 import { APP_NAME } from "./identity";
+import { registerUploadIpc } from "./upload";
 
 const UPDATE_CHANNELS = ["check-for-updates", "start-update-download"];
 
@@ -56,4 +57,6 @@ export function registerDamIpc() {
     await shell.openExternal(text);
     return { ok: true };
   });
+
+  registerUploadIpc();
 }

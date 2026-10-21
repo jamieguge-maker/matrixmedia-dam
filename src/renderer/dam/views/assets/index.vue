@@ -6,6 +6,9 @@
         <div class="dam-assets__sub">{{ greeting }}</div>
       </div>
       <div class="dam-assets__actions">
+        <el-button size="small" type="primary" icon="el-icon-upload2" @click="uploadVisible = true">
+          上传素材
+        </el-button>
         <el-button size="small" icon="el-icon-refresh" :loading="loading" @click="load">
           刷新
         </el-button>
@@ -234,6 +237,7 @@
     </div>
 
     <asset-detail-dialog :visible.sync="detailVisible" :asset-id="detailId" />
+    <upload-dialog :visible.sync="uploadVisible" @uploaded="onUploaded" />
   </div>
 </template>
 
@@ -241,6 +245,7 @@
 import { assetGroups, assetStats, assetThumbUrls, categoryTree, listAssets } from "../../api/assets";
 import { useDamSession } from "../../store/session";
 import AssetDetailDialog from "../../components/AssetDetailDialog.vue";
+import UploadDialog from "../../components/UploadDialog.vue";
 import {
   LANGUAGE_OPTIONS,
   RATIO_OPTIONS,
@@ -257,7 +262,7 @@ import {
 
 export default {
   name: "DamAssetsView",
-  components: { AssetDetailDialog },
+  components: { AssetDetailDialog, UploadDialog },
   data() {
     return {
       session: useDamSession(),
@@ -286,7 +291,8 @@ export default {
       thumbs: {},
       thumbError: false,
       detailVisible: false,
-      detailId: null
+      detailId: null,
+      uploadVisible: false
     };
   },
   computed: {
@@ -480,6 +486,10 @@ export default {
     openDetail(row) {
       this.detailId = row.id;
       this.detailVisible = true;
+    },
+    onUploaded() {
+      this.page = 1;
+      this.load();
     }
   }
 };
