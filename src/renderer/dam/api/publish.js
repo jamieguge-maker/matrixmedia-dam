@@ -46,3 +46,22 @@ export function updatePublishRecord(id, payload) {
 export function listPublishRecords(query) {
   return api.get("/publish/records" + buildQuery(query));
 }
+
+/** 发布计划：子账号维护自己的计划，管理员读取团队计划。 */
+export function listPlans() {
+  return api.get("/plans");
+}
+
+export function savePlan(payload) {
+  const body = Object.assign({}, payload);
+  if (body.id) {
+    const id = body.id;
+    delete body.id;
+    return api.put(`/plans/${id}`, body);
+  }
+  return api.post("/plans", body);
+}
+
+export function deletePlan(id) {
+  return api.del(`/plans/${id}`);
+}
