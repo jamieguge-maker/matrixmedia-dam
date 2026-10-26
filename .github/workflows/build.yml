@@ -97,7 +97,7 @@ jobs:
         run: yarn
       - name: Build Electron app (Linux x64 + arm64)
         # CI 负责 macOS 本地打不了的产物：deb，以及 arm64 全部格式。RPM 构建在 Ubuntu 26.04 的 rpmbuild 上失败。
-        run: yarn rm:build && yarn build:dir && electron-builder --linux AppImage deb tar.gz --x64 --arm64
+        run: yarn rm:build && yarn build:dir && yarn electron-builder --linux AppImage deb tar.gz --x64 --arm64
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
