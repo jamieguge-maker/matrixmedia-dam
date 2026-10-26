@@ -3,9 +3,9 @@ const githubToken = process.env.GH_TOKEN;
 const policyToken = process.env.DAM_CLIENT_VERSION_TOKEN;
 const repository = process.env.GITHUB_REPOSITORY;
 
-if (!version || !githubToken || !policyToken || !repository) {
+if (!version || !githubToken || !repository) {
   throw new Error(
-    "发布线上升级提示需要 VERSION、GH_TOKEN、GITHUB_REPOSITORY 和 DAM_CLIENT_VERSION_TOKEN。请在仓库 Actions secrets 中配置 DAM_CLIENT_VERSION_TOKEN。"
+    "发布版本信息需要 VERSION、GH_TOKEN 和 GITHUB_REPOSITORY。"
   );
 }
 
@@ -30,6 +30,13 @@ const installer = (release.assets || []).find((asset) =>
 );
 if (!installer || !installer.browser_download_url) {
   throw new Error(`Release ${tag} 中没有 Windows x64 安装包`);
+}
+
+if (!policyToken) {
+  console.log(
+    `未配置 DAM_CLIENT_VERSION_TOKEN，跳过服务端策略写入；客户端会从公开 GitHub Release 获取 ${version} 和更新说明。`
+  );
+  process.exit(0);
 }
 
 const apiUrl =
