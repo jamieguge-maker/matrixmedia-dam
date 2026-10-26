@@ -97,7 +97,7 @@
             <el-option v-for="target in availableTargets" :key="target.id" :label="targetLabel(target)" :value="target.id" />
           </el-select>
           <div v-if="!availableTargets.length" class="dam-plans__form-hint">
-            暂无可选账号。请先在「社媒账号」中添加账号，再创建发布计划。
+            {{ noTargetsHint }}
           </div>
         </el-form-item>
         <el-form-item label="计划名称" required>
@@ -153,6 +153,7 @@ import { deletePlan, listPlans, listPublishRecords, listTargets, savePlan } from
 import { listUsers } from "../../api/admin";
 import HintTip from "../../components/HintTip.vue";
 import { platformLabel } from "../../utils/format";
+import { loadLocalAccountKeys, missingLocalAccounts, syncLocalAccountsToServer } from "../../utils/localAccounts";
 
 const WEEKDAYS = [
   { value: 1, label: "周一" },
@@ -222,6 +223,7 @@ export default {
       saving: false,
       plans: [],
       targets: [],
+      localMissingCount: 0,
       users: [],
       publishedCounts: {},
       filterUserId: null,
@@ -248,6 +250,12 @@ export default {
         const ownerId = target.createdBy || target.createdById || target.userId || target.ownerUserId;
         return this.isAdmin || Number(ownerId) === myId;
       });
+    },
+    noTargetsHint() {
+      if (this.localMissingCount) {
+        return `检测到本机「媒体平台管理」已有 ${this.localMissingCount} 个账号，但尚未同步到当前发布账号列表。请刷新；若仍未出现，请联系管理员检查账号登记权限。`;
+      }
+      return "暂无可选账号。请先在「媒体平台管理」添加并登录社媒账号，再刷新此页。";
     },
     platformOptions() {
       const codes = [...new Set(this.plans.map((plan) => plan.platformCode).filter(Boolean))];
@@ -311,14 +319,22 @@ export default {
     async load() {
       this.loading = true;
       try {
-        const [plansResult, targetsResult, usersResult, recordsResult] = await Promise.all([
+        const [plansResult, initialTargetsResult, usersResult, recordsResult, localKeys] = await Promise.all([
           listPlans(),
           listTargets({ includeDisabled: true }),
           this.isAdmin ? listUsers().catch(() => []) : Promise.resolve([]),
-          loadWeekRecords(this.week.startDate, this.week.endDate)
+          loadWeekRecords(this.week.startDate, this.week.endDate),
+          loadLocalAccountKeys()
         ]);
+        let targetsResult = initialTargetsResult;
+        const initialTargets = Array.isArray(initialTargetsResult)
+          ? initialTargetsResult
+          : (initialTargetsResult && (initialTargetsResult.items || initialTargetsResult.targets)) || [];
+        const created = await syncLocalAccountsToServer(initialTargets, localKeys);
+        if (created) targetsResult = await listTargets({ includeDisabled: true });
         this.plans = Array.isArray(plansResult) ? plansResult : (plansResult && (plansResult.items || plansResult.plans)) || [];
         this.targets = Array.isArray(targetsResult) ? targetsResult : (targetsResult && (targetsResult.items || targetsResult.targets)) || [];
+        this.localMissingCount = missingLocalAccounts(this.targets, localKeys).length;
         this.users = usersResult || [];
         const records = recordRows(recordsResult);
         const counts = {};
