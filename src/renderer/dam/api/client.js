@@ -18,7 +18,7 @@ export class ApiError extends Error {
   }
 }
 
-const DEFAULT_API_BASE = "https://dam.guocio.cn/api";
+const DEFAULT_API_BASE = "https://dam.guocio.cn/api-v2";
 const DEFAULT_TIMEOUT = 20000;
 
 let baseUrlPromise = null;

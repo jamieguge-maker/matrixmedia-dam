@@ -37,6 +37,10 @@
         </el-button>
       </el-form>
 
+      <div class="dam-login__tips">
+        <hint-tip :content="accountTip" placement="top" max-width="340px" />
+      </div>
+
       <el-alert
         v-if="errorText"
         class="dam-login__error"
@@ -48,6 +52,7 @@
 
       <div class="dam-login__server">
         <span class="dam-login__server-text">服务端：{{ apiBase || "未配置" }}</span>
+        <hint-tip :content="serverTip" placement="top" max-width="340px" />
         <el-button type="text" size="mini" @click="showServer = !showServer">
           {{ showServer ? "收起" : "修改" }}
         </el-button>
@@ -69,9 +74,11 @@
 import { ipcRenderer } from "electron";
 import { useDamSession } from "../../store/session";
 import { resetBaseUrl } from "../../api/client";
+import HintTip from "../../components/HintTip.vue";
 
 export default {
   name: "DamLoginView",
+  components: { HintTip },
   data() {
     return {
       session: useDamSession(),
@@ -82,7 +89,11 @@ export default {
       apiBase: "",
       apiBaseDraft: "",
       savingServer: false,
-      version: ""
+      version: "",
+      accountTip:
+        "账号由管理员统一分配：没有账号或忘记密码，请联系管理员在「账号管理」里新建成员或重置密码。",
+      serverTip:
+        "素材与账号都存在服务端，客户端不保存业务数据。\n换服务器时点「修改」填写 API 地址，保存后需要重新登录。"
     };
   },
   created() {
@@ -191,6 +202,13 @@ export default {
 
   &__submit {
     width: 100%;
+  }
+
+  &__tips {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 4px;
   }
 
   &__error {

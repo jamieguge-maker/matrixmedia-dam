@@ -120,6 +120,13 @@ export const MM_ALIAS = {
   fanqie: "fqsp"
 };
 
+/**
+ * DAM 平台编码 → 本机「媒体平台管理」里的平台名（account 数据里的 pt）。
+ *
+ * 定义在 localAccountMatch.js（纯函数、带单测），这里转出保持原引用可用。
+ */
+export { MM_PT_NAME } from "./localAccountMatch";
+
 export const PUBLISH_STATUS_LABEL = {
   draft: "草稿",
   queued: "待发布",

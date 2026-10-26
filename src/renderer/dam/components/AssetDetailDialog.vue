@@ -65,7 +65,7 @@
             <el-descriptions-item label="上传时间">
               {{ formatDateTime(asset.uploadedAt || asset.createdAt) }}
             </el-descriptions-item>
-            <el-descriptions-item label="操作人">{{ asset.operator || "-" }}</el-descriptions-item>
+            <el-descriptions-item label="上传人">{{ asset.operator || "-" }}</el-descriptions-item>
             <el-descriptions-item label="状态">
               <el-tag size="mini" :type="uploadStatusType(asset.uploadStatus)">
                 {{ uploadStatusLabel(asset.uploadStatus) }}

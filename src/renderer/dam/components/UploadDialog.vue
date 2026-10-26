@@ -132,34 +132,63 @@
       <div v-if="!files.length" class="dam-upload__muted">这个版本还没有文件</div>
 
       <div v-for="file in files" :key="file.path" class="dam-file">
-        <div class="dam-file__main">
-          <span class="dam-file__name" :title="file.name">{{ file.name }}</span>
-          <span class="dam-file__size">{{ formatBytes(file.size) }}</span>
-          <el-button type="text" size="mini" @click="removeFile(file)">移除</el-button>
-        </div>
-
-        <div class="dam-file__path">{{ pathFor(file) }}</div>
-
-        <div v-if="needsCover(file)" class="dam-file__cover">
-          <el-button size="mini" @click="pickCover(file)">
-            {{ file.coverName ? "更换封面" : "选择封面" }}
-          </el-button>
-          <span v-if="file.coverName" class="dam-file__cover-name">{{ file.coverName }}</span>
-          <span v-else class="dam-upload__warn">这个板块的视频必须配封面</span>
-          <el-button v-if="file.coverName" type="text" size="mini" @click="clearCover(file)">
-            清除
-          </el-button>
-        </div>
-
-        <div v-if="file.status" class="dam-file__status">
-          <el-tag size="mini" :type="statusType(file.status)">{{ statusText(file.status) }}</el-tag>
-          <el-progress
-            v-if="file.status === 'uploading'"
-            :percentage="file.percent || 0"
-            :stroke-width="6"
-            class="dam-file__progress"
+        <div class="dam-file__thumb">
+          <el-image
+            v-if="isImage(file)"
+            :src="thumbUrl(file)"
+            :preview-src-list="[thumbUrl(file)]"
+            fit="cover"
+            class="dam-file__thumb-el"
           />
-          <span class="dam-file__message">{{ file.message }}</span>
+          <video
+            v-else-if="isVideo(file)"
+            :src="videoThumbUrl(file)"
+            class="dam-file__thumb-el"
+            preload="metadata"
+            muted
+          />
+          <i v-else class="el-icon-document dam-file__thumb-icon" />
+        </div>
+
+        <div class="dam-file__body">
+          <div class="dam-file__main">
+            <span class="dam-file__name" :title="file.name">{{ file.name }}</span>
+            <span class="dam-file__size">{{ formatBytes(file.size) }}</span>
+            <el-button type="text" size="mini" @click="removeFile(file)">移除</el-button>
+          </div>
+
+          <div class="dam-file__path">{{ pathFor(file) }}</div>
+
+          <div v-if="needsCover(file)" class="dam-file__cover">
+            <el-image
+              v-if="file.coverPath"
+              :src="coverThumbUrl(file)"
+              :preview-src-list="[coverThumbUrl(file)]"
+              fit="cover"
+              class="dam-file__cover-thumb"
+            />
+            <el-button size="mini" @click="pickCover(file)">
+              {{ file.coverName ? "更换封面" : "选择封面" }}
+            </el-button>
+            <span v-if="file.coverName" class="dam-file__cover-name">{{ file.coverName }}</span>
+            <span v-else class="dam-upload__warn">这个板块的视频必须配封面</span>
+            <el-button v-if="file.coverName" type="text" size="mini" @click="clearCover(file)">
+              清除
+            </el-button>
+          </div>
+
+          <div v-if="file.status" class="dam-file__status">
+            <el-tag size="mini" :type="statusType(file.status)">{{
+              statusText(file.status)
+            }}</el-tag>
+            <el-progress
+              v-if="file.status === 'uploading'"
+              :percentage="file.percent || 0"
+              :stroke-width="6"
+              class="dam-file__progress"
+            />
+            <span class="dam-file__message">{{ file.message }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -183,6 +212,7 @@ import {
   patchAssetStorage
 } from "../api/assets";
 import { formatBytes, SECTION_KINDS } from "../utils/format";
+import { localFileUrl, localVideoThumbUrl } from "../utils/localFile";
 import {
   RATIO_FOLDER,
   SECTION_GROUP_LABEL,
@@ -334,6 +364,23 @@ export default {
   },
   methods: {
     formatBytes,
+    isImage(file) {
+      return isImageFile(file.name);
+    },
+    isVideo(file) {
+      return isVideoFile(file.name);
+    },
+    /** 图片直接用本机文件地址做缩略图（主窗口已关闭 webSecurity） */
+    thumbUrl(file) {
+      return localFileUrl(file.path);
+    },
+    /** 视频取首帧当缩略图 */
+    videoThumbUrl(file) {
+      return localVideoThumbUrl(file.path);
+    },
+    coverThumbUrl(file) {
+      return localFileUrl(file.coverPath);
+    },
     findFile(taskId) {
       const base = String(taskId || "").replace(/#cover$/, "");
       for (const key of Object.keys(this.buckets)) {
@@ -622,6 +669,8 @@ export default {
 
       this.uploading = true;
       this.uploadedCount = 0;
+      // 全部成功（没有失败项）时，上传结束自动关窗
+      let shouldClose = false;
       const targets = this.combos
         .map((combo) => ({ combo, bucket: this.bucketOf(combo.key) }))
         .filter((target) => target.bucket.length);
@@ -775,14 +824,44 @@ export default {
             sum + this.bucketOf(combo.key).filter((file) => file.status === "failed").length,
           0
         );
+        /** 内容重复的文件会复用库里那条记录，素材库不会多出一行 —— 必须说清楚 */
+        const duplicated = this.combos.reduce(
+          (sum, combo) =>
+            sum + this.bucketOf(combo.key).filter((file) => file.status === "duplicated").length,
+          0
+        );
+        const stored = this.uploadedCount - duplicated;
+
         if (failed) {
           this.$message.warning(`完成：成功 ${this.uploadedCount} 个，失败 ${failed} 个`);
-        } else if (this.uploadedCount) {
-          this.$message.success(`上传完成（${this.uploadedCount} 个）`);
+        } else if (duplicated && !stored) {
+          // 全部是库中已有的文件：不关窗，让用户看见每行「内容重复，已复用…」
+          this.$message.warning(
+            `这 ${duplicated} 个文件素材库里已经有（内容重复），没有新增素材；` +
+              `行里的「已复用」就是库里那条记录，可按标题搜索`
+          );
+        } else if (stored) {
+          this.$message.success(
+            duplicated
+              ? `上传完成：新增 ${stored} 个，${duplicated} 个内容重复已复用`
+              : `上传完成（${stored} 个）`
+          );
+          shouldClose = true;
         }
       } finally {
         this.uploading = false;
       }
+
+      if (shouldClose) {
+        this.resetAfterUpload();
+        this.$emit("update:visible", false);
+      }
+    },
+    /** 上传成功后清空文件列表，避免再次打开时看到上次的残留 */
+    resetAfterUpload() {
+      this.buckets = {};
+      this.uploadedCount = 0;
+      this.activeKey = this.combos.length ? this.combos[0].key : comboKey("zh", "");
     }
   }
 };
@@ -882,6 +961,8 @@ export default {
 }
 
 .dam-file {
+  display: flex;
+  gap: 10px;
   padding: 10px 12px;
   background: $cardBg;
   border: 1px solid $borderColor;
@@ -889,6 +970,36 @@ export default {
 
   & + & {
     margin-top: 8px;
+  }
+
+  &__thumb {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 68px;
+    height: 68px;
+    overflow: hidden;
+    background: $pageBg;
+    border: 1px solid $borderColor;
+    border-radius: 6px;
+    color: $menuMuted;
+  }
+
+  &__thumb-el {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  &__thumb-icon {
+    font-size: 22px;
+  }
+
+  &__body {
+    flex: 1;
+    min-width: 0;
   }
 
   &__main {
@@ -924,6 +1035,15 @@ export default {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  &__cover-thumb {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border: 1px solid $borderColor;
+    border-radius: 4px;
+    overflow: hidden;
   }
 
   &__cover-name {

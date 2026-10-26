@@ -18,6 +18,7 @@ import path from "path";
 import { registerDamIpc, takeoverUpdateCheck } from "./ipc";
 import { damUpdateSource } from "./updateSource";
 import { APP_NAME, APP_ID } from "./identity";
+import { clearSession } from "./session";
 
 /** 与官方 matrix-video 隔离：userData、任务栏标识、单实例都独立 */
 if (app.name !== APP_NAME) {
@@ -45,6 +46,15 @@ try {
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
 }
+
+/**
+ * 每次启动都要求重新登录（用户要求：打开应用必须有登录操作）。
+ *
+ * 之前把令牌加密留在本机，启动即自动进入工作区；现在启动时清掉，
+ * 页面会落到登录页。clearSession 必须在上面 setPath 之后调用，
+ * 否则会去删默认的 matrix-video 目录。
+ */
+clearSession();
 
 /**
  * 上游 main/index.js 在 import 之后会强制 app.name = "matrix-video"

@@ -6,10 +6,32 @@ on:
       - prod
 
 jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.15.1"
+      - name: Calculate next client version
+        id: version
+        run: node scripts/prepare-ci-release.mjs
+
   build-windows:
+    needs: prepare-release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: node scripts/prepare-ci-release.mjs "$env:RELEASE_VERSION"
+        shell: pwsh
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -33,9 +55,14 @@ jobs:
           path: build/MatrixMedia-*-win-*.exe
 
   build-mac:
+    needs: prepare-release
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: node scripts/prepare-ci-release.mjs "$RELEASE_VERSION"
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -53,9 +80,14 @@ jobs:
           path: build/MatrixMedia-*-mac-*.dmg
 
   build-linux:
+    needs: prepare-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: node scripts/prepare-ci-release.mjs "$RELEASE_VERSION"
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -76,7 +108,7 @@ jobs:
             build/MatrixMedia-*-linux-*.tar.gz
 
   release-github:
-    needs: [build-windows, build-mac, build-linux]
+    needs: [prepare-release, build-windows, build-mac, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,7 +121,7 @@ jobs:
         id: ver
         shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION="${{ needs.prepare-release.outputs.version }}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Generate release notes
         env:
@@ -117,6 +149,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     outputs:
       version: ${{ steps.ver.outputs.version }}
+
+  deploy-client-version:
+    needs: [release-github]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish client upgrade policy
+        env:
+          VERSION: ${{ needs.release-github.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DAM_CLIENT_VERSION_TOKEN: ${{ secrets.DAM_CLIENT_VERSION_TOKEN }}
+        run: node scripts/publish-client-version.mjs
 
   # NOTE: Gitee 上传已改为本地执行（见仓库根 pushall.js），不再走 GitHub Actions 同步。
   # 如需事后从 GitHub Release 补传到 Gitee，使用 .github/workflows/sync-gitee.yml 手动触发。

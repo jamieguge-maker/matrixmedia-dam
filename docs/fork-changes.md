@@ -84,6 +84,17 @@ node scripts/dam-anchors.mjs --report
 | `DAM_PROFILE_DIR`| 覆盖 userData 目录，用于并行跑第二个实例（自测 / 双账号），默认 `%APPDATA%/matrixmedia-dam` |
 | `dam-config.json`| `apiBase`（默认 `https://dam.guocio.cn/api`）、`syncIntervalMin`                        |
 
+### 自动发布与客户端升级提醒
+
+推送到 `prod` 后，GitHub Actions 会自动递增 `0.12.9-dam.N` 版本、构建 Windows / macOS / Linux 安装包、
+创建带提交说明的 GitHub Release，并将最新版本、Windows 安装包地址和发布说明写入
+`https://dam.guocio.cn/api-v2/app/client-version`。客户端启动、每 30 分钟及窗口重新获得焦点时检查；
+发现 `latestVersion` 高于本机版本就显示升级提示和更新说明。策略默认允许用户稍后处理；
+将 `minVersion` 设为最低受支持版本可强制旧版本升级。
+
+仓库需配置 Actions secret `DAM_CLIENT_VERSION_TOKEN`，值为 DAM v2 管理员访问令牌（用于更新客户端版本策略）。
+若该 secret 未配置或令牌失效，安装包仍会发布，但线上版本策略更新步骤会失败，旧客户端不会收到本次升级提醒。
+
 ---
 
 ## 5. 已知限制

@@ -1,11 +1,17 @@
 <template>
   <div class="dam-assets">
     <div class="dam-assets__header">
-      <div>
-        <div class="dam-assets__title">素材库</div>
-        <div class="dam-assets__sub">{{ greeting }}</div>
-      </div>
+      <div class="dam-assets__title">素材库</div>
       <div class="dam-assets__actions">
+        <el-radio-group v-model="viewMode" size="small" class="dam-assets__view">
+          <el-radio-button label="grid">
+            <i class="el-icon-menu" title="网格视图"></i>
+          </el-radio-button>
+          <el-radio-button label="list">
+            <i class="el-icon-s-unfold" title="列表视图"></i>
+          </el-radio-button>
+        </el-radio-group>
+
         <el-button size="small" type="primary" icon="el-icon-upload2" @click="uploadVisible = true">
           上传素材
         </el-button>
@@ -14,6 +20,10 @@
         </el-button>
       </div>
     </div>
+
+    <el-tabs v-model="activeTab" class="dam-assets__tabs">
+      <el-tab-pane v-for="tab in tabs" :key="tab.name" :label="tab.label" :name="tab.name" />
+    </el-tabs>
 
     <div class="dam-filters">
       <div class="dam-filters__row">
@@ -27,20 +37,6 @@
           @keyup.enter.native="search"
           @clear="search"
         />
-
-        <el-select
-          v-model="filters.section"
-          size="small"
-          class="dam-filters__select"
-          @change="onSectionChange"
-        >
-          <el-option
-            v-for="item in sectionOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
 
         <el-select
           v-if="showGroup"
@@ -110,16 +106,6 @@
         <el-button size="small" type="primary" @click="search">查询</el-button>
         <el-button size="small" @click="reset">重置</el-button>
       </div>
-
-      <div class="dam-filters__quick">
-        <el-radio-group v-model="quick" size="mini" @change="search">
-          <el-radio-button label="">全部</el-radio-button>
-          <el-radio-button label="recent">近 7 天</el-radio-button>
-          <el-radio-button label="unpublished">尚未发布</el-radio-button>
-          <el-radio-button label="missingCover">视频缺封面</el-radio-button>
-          <el-radio-button label="failed">上传失败</el-radio-button>
-        </el-radio-group>
-      </div>
     </div>
 
     <el-alert
@@ -133,14 +119,53 @@
       <el-button size="mini" @click="load">重试</el-button>
     </el-alert>
 
-    <div class="dam-assets__stats">
-      <div v-for="card in statCards" :key="card.key" class="dam-stat">
-        <div class="dam-stat__value">{{ card.value }}</div>
-        <div class="dam-stat__label">{{ card.label }}</div>
+    <div v-if="viewMode === 'grid'" v-loading="loading" class="dam-grid">
+      <div v-for="row in items" :key="row.id" class="dam-card" @click="openDetail(row)">
+        <div class="dam-card__thumb">
+          <el-image
+            v-if="thumbUrl(row.id)"
+            :src="thumbUrl(row.id)"
+            fit="cover"
+            class="dam-card__img"
+            @error="onThumbError(row.id)"
+          />
+          <div v-else class="dam-card__ph">
+            <i :class="mediaIcon(row)"></i>
+          </div>
+          <el-tag
+            v-if="(row.publishedPlatforms || []).length"
+            size="mini"
+            type="success"
+            class="dam-card__badge"
+          >
+            已发布
+          </el-tag>
+          <el-button
+            v-if="canDelete"
+            class="dam-card__del"
+            size="mini"
+            icon="el-icon-delete"
+            circle
+            @click.stop="openDelete(row)"
+          />
+        </div>
+        <div class="dam-card__body">
+          <div class="dam-card__title" :title="row.title">{{ row.title }}</div>
+          <div class="dam-card__meta">
+            {{ groupKind(row) }}
+          </div>
+          <div class="dam-card__meta">
+            {{ formatBytes(row.fileSize) }} · {{ formatDateTime(row.uploadedAt || row.createdAt) }}
+            · 上传人 {{ row.operator || "-" }}
+          </div>
+        </div>
       </div>
+
+      <div v-if="!loading && !items.length" class="dam-grid__empty">没有符合条件的素材</div>
     </div>
 
     <el-table
+      v-else
       v-loading="loading"
       :data="items"
       class="dam-assets__table"
@@ -156,6 +181,7 @@
             :preview-src-list="[thumbUrl(row.id)]"
             fit="cover"
             class="dam-thumb"
+            @error="onThumbError(row.id)"
           />
           <el-tooltip v-else :content="thumbTip" placement="top">
             <div class="dam-thumb dam-thumb--empty">
@@ -172,10 +198,6 @@
             {{ row.fileName }} · {{ formatBytes(row.fileSize) }}
           </div>
         </template>
-      </el-table-column>
-
-      <el-table-column label="板块" width="100">
-        <template #default="{ row }">{{ sectionLabel(row.section) }}</template>
       </el-table-column>
 
       <el-table-column label="系列 / 名称" width="150" show-overflow-tooltip>
@@ -202,23 +224,28 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="状态" width="92">
-        <template #default="{ row }">
-          <el-tag size="mini" :type="uploadStatusType(row.uploadStatus)">
-            {{ uploadStatusLabel(row.uploadStatus) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-
       <el-table-column label="上传时间" width="145">
         <template #default="{ row }">
           {{ formatDateTime(row.uploadedAt || row.createdAt) }}
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="80" fixed="right">
+      <el-table-column label="上传人" width="120" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.operator || "-" }}</template>
+      </el-table-column>
+
+      <el-table-column label="操作" width="130" fixed="right">
         <template #default="{ row }">
           <el-button type="text" size="mini" @click="openDetail(row)">详情</el-button>
+          <el-button
+            v-if="canDelete"
+            type="text"
+            size="mini"
+            class="dam-assets__danger"
+            @click="openDelete(row)"
+          >
+            删除
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -238,35 +265,74 @@
 
     <asset-detail-dialog :visible.sync="detailVisible" :asset-id="detailId" />
     <upload-dialog :visible.sync="uploadVisible" @uploaded="onUploaded" />
+
+    <el-dialog :visible.sync="deleteVisible" title="删除素材" width="440px" append-to-body>
+      <div class="dam-delete__target">{{ deleteTarget ? deleteTarget.title : "" }}</div>
+
+      <el-radio-group v-model="deleteMode" class="dam-delete__modes">
+        <el-radio label="trash">移入回收站（可从正式版「素材回收站」恢复）</el-radio>
+        <el-radio label="purge" :disabled="!isAdmin">
+          彻底删除（同时删除 WPS 云端文件{{ isAdmin ? "" : "，仅管理员可用" }}）
+        </el-radio>
+      </el-radio-group>
+
+      <div class="dam-delete__tip">
+        <hint-tip :content="deleteTip" placement="right" max-width="360px" />
+      </div>
+
+      <span slot="footer">
+        <el-button @click="deleteVisible = false">取消</el-button>
+        <el-button type="danger" :loading="deleting" @click="confirmDelete">
+          {{ deleteMode === "purge" ? "彻底删除" : "删除" }}
+        </el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { assetGroups, assetStats, assetThumbUrls, categoryTree, listAssets } from "../../api/assets";
+import {
+  assetGroups,
+  assetThumbUrls,
+  categoryTree,
+  deleteAsset,
+  listAssets,
+  purgeAssets
+} from "../../api/assets";
 import { useDamSession } from "../../store/session";
 import AssetDetailDialog from "../../components/AssetDetailDialog.vue";
 import UploadDialog from "../../components/UploadDialog.vue";
+import HintTip from "../../components/HintTip.vue";
 import {
   LANGUAGE_OPTIONS,
   RATIO_OPTIONS,
   SECTION_KINDS,
-  SECTION_OPTIONS,
   formatBytes,
   formatDateTime,
-  platformLabel,
-  roleLabel,
-  sectionLabel,
-  uploadStatusLabel,
-  uploadStatusType
+  platformLabel
 } from "../../utils/format";
+
+/** 顶部 TAB：最新上传 = 全部（按上传时间倒序），其余按板块过滤 */
+const TABS = [
+  { name: "latest", label: "最新上传", section: "" },
+  { name: "product", label: "产品", section: "product" },
+  { name: "case", label: "项目案例", section: "case" },
+  { name: "personal", label: "黄总个人", section: "personal" },
+  { name: "activity", label: "公司活动", section: "activity" }
+];
+
+const VIEW_MODE_KEY = "dam-assets-view-mode";
 
 export default {
   name: "DamAssetsView",
-  components: { AssetDetailDialog, UploadDialog },
+  components: { AssetDetailDialog, UploadDialog, HintTip },
   data() {
     return {
       session: useDamSession(),
-      sectionOptions: SECTION_OPTIONS,
+      tabs: TABS,
+      activeTab: "latest",
+      /** grid = 封面卡片，list = 表格；记住上次选择 */
+      viewMode: this.readViewMode(),
       languageOptions: LANGUAGE_OPTIONS,
       ratioOptions: RATIO_OPTIONS,
       filters: {
@@ -278,7 +344,6 @@ export default {
         language: "",
         ratio: ""
       },
-      quick: "",
       groupOptions: [],
       categoryOptions: [],
       loading: false,
@@ -287,31 +352,22 @@ export default {
       total: 0,
       page: 1,
       pageSize: 20,
-      stats: {},
       thumbs: {},
+      thumbFailed: {},
       thumbError: false,
       detailVisible: false,
       detailId: null,
-      uploadVisible: false
+      uploadVisible: false,
+      deleteVisible: false,
+      deleteTarget: null,
+      deleteMode: "trash",
+      deleting: false,
+      deleteTip:
+        "移入回收站：素材从列表消失，记录与 WPS 文件都还在，可在矩媒正式版的「素材回收站」恢复。\n" +
+        "彻底删除：记录直接删掉，并删除 WPS 云端文件（进 WPS 自己的回收站），不可恢复，只有管理员能做。"
     };
   },
   computed: {
-    greeting() {
-      const user = this.session.state.user;
-      if (!user) return "已连接 DAM 服务端";
-      const parts = [user.displayName || user.username, roleLabel(user.role)];
-      if (user.departmentName) parts.push(user.departmentName);
-      return parts.filter(Boolean).join(" · ");
-    },
-    statCards() {
-      const stats = this.stats || {};
-      return [
-        { key: "total", label: "素材总数", value: stats.total || 0 },
-        { key: "stored", label: "已入库", value: stats.stored || 0 },
-        { key: "unpublished", label: "尚未发布", value: stats.unpublished || 0 },
-        { key: "recent", label: "近 7 天新增", value: stats.recent7d || 0 }
-      ];
-    },
     showGroup() {
       return Boolean(this.filters.section) && this.filters.section !== "uncategorized";
     },
@@ -331,18 +387,68 @@ export default {
     },
     thumbTip() {
       return this.thumbError ? "缩略图地址获取失败，请刷新重试" : "没有可用的预览图";
+    },
+    /** 有没有会让新素材「看不见」的筛选条件（上传后提示用） */
+    hasActiveFilters() {
+      return Boolean(
+        this.activeTab !== "latest" ||
+          this.filters.keyword.trim() ||
+          this.filters.groupName ||
+          this.filters.categoryName ||
+          this.filters.kindName ||
+          this.filters.language ||
+          this.filters.ratio
+      );
+    },
+    /** 删除按钮：服务端只允许管理员 / 操作员删素材 */
+    canDelete() {
+      const user = this.session.state.user || {};
+      return Boolean(user.isSuperAdmin) || ["admin", "operator"].includes(user.role);
+    },
+    /** 彻底删除（含云端文件）只有管理员能做 */
+    isAdmin() {
+      const user = this.session.state.user || {};
+      return Boolean(user.isSuperAdmin) || user.role === "admin";
     }
   },
   created() {
     this.load();
   },
+  watch: {
+    activeTab(name) {
+      const tab = this.tabs.find((item) => item.name === name) || this.tabs[0];
+      this.filters.section = tab.section;
+      this.filters.groupName = "";
+      this.filters.categoryName = "";
+      this.filters.kindName = "";
+      this.groupOptions = [];
+      this.categoryOptions = [];
+      if (tab.section) this.loadGroups();
+      if (tab.section === "product") this.loadCategories();
+      this.page = 1;
+      this.load();
+    },
+    viewMode(mode) {
+      try {
+        localStorage.setItem(VIEW_MODE_KEY, mode);
+      } catch (_) {
+        /* 隐私模式下忽略 */
+      }
+    }
+  },
   methods: {
-    sectionLabel,
-    uploadStatusLabel,
-    uploadStatusType,
     formatBytes,
     formatDateTime,
     platformLabel,
+    readViewMode() {
+      try {
+        const saved = localStorage.getItem(VIEW_MODE_KEY);
+        if (saved === "grid" || saved === "list") return saved;
+      } catch (_) {
+        /* 忽略 */
+      }
+      return "grid";
+    },
     groupKind(row) {
       const parts = [];
       if (row.categoryName) parts.push(row.categoryName);
@@ -355,8 +461,14 @@ export default {
       return "el-icon-document";
     },
     thumbUrl(id) {
+      if (this.thumbFailed[id]) return "";
       const hit = this.thumbs[id];
       return hit && hit.url ? hit.url : "";
+    },
+    /** 签名地址能拿到、但云端文件没了（WPS 报「文件不存在」）时退回图标，别显示破图 */
+    onThumbError(id) {
+      if (!id) return;
+      this.$set(this.thumbFailed, id, true);
     },
     buildQuery() {
       const query = {
@@ -373,11 +485,6 @@ export default {
       if (this.filters.language) query.language = this.filters.language;
       if (this.filters.ratio) query.ratio = this.filters.ratio;
 
-      if (this.quick === "recent") query.recentDays = 7;
-      if (this.quick === "unpublished") query.unpublishedOnly = true;
-      if (this.quick === "missingCover") query.missingCover = true;
-      if (this.quick === "failed") query.failedOnly = true;
-
       return query;
     },
     onPageChange(value) {
@@ -392,21 +499,6 @@ export default {
     search() {
       this.page = 1;
       this.load();
-    },
-    async onSectionChange() {
-      this.filters.groupName = "";
-      this.filters.categoryName = "";
-      this.filters.kindName = "";
-      this.groupOptions = [];
-      this.categoryOptions = [];
-
-      if (this.filters.section && this.filters.section !== "uncategorized") {
-        this.loadGroups();
-      }
-      if (this.filters.section === "product") {
-        this.loadCategories();
-      }
-      this.search();
     },
     async loadGroups() {
       try {
@@ -440,7 +532,6 @@ export default {
         language: "",
         ratio: ""
       };
-      this.quick = "";
       this.groupOptions = [];
       this.categoryOptions = [];
       this.page = 1;
@@ -452,10 +543,9 @@ export default {
       this.thumbError = false;
 
       try {
-        const [list, stats] = await Promise.all([listAssets(this.buildQuery()), assetStats()]);
+        const list = await listAssets(this.buildQuery());
         this.items = (list && list.items) || [];
         this.total = (list && list.total) || 0;
-        this.stats = stats || {};
         this.loadThumbs();
       } catch (error) {
         this.items = [];
@@ -467,6 +557,7 @@ export default {
     },
     async loadThumbs() {
       const ids = this.items.map((item) => item.id).filter(Boolean);
+      this.thumbFailed = {};
       if (!ids.length) {
         this.thumbs = {};
         return;
@@ -490,6 +581,41 @@ export default {
     onUploaded() {
       this.page = 1;
       this.load();
+      if (this.hasActiveFilters) {
+        this.$message.info("已刷新列表；当前有筛选条件，看不到刚上传的素材时点「重置」");
+      }
+    },
+    openDelete(row) {
+      this.deleteTarget = row;
+      this.deleteMode = "trash";
+      this.deleteVisible = true;
+    },
+    async confirmDelete() {
+      const target = this.deleteTarget;
+      if (!target) return;
+
+      this.deleting = true;
+      try {
+        if (this.deleteMode === "purge") {
+          const result = await purgeAssets([target.id], true);
+          const failed = ((result && result.results) || []).find((item) => !item.ok);
+          if (failed) throw new Error(failed.message || "彻底删除失败");
+          this.$message.success("素材已彻底删除（含云端文件）");
+        } else {
+          await deleteAsset(target.id);
+          this.$message.success("已移入回收站");
+        }
+
+        this.deleteVisible = false;
+        this.deleteTarget = null;
+        // 删掉的是当前页最后一条时回退一页，避免停在空页
+        if (this.items.length === 1 && this.page > 1) this.page -= 1;
+        await this.load();
+      } catch (error) {
+        this.$message.error((error && error.message) || "删除失败");
+      } finally {
+        this.deleting = false;
+      }
     }
   }
 };
@@ -514,21 +640,26 @@ export default {
     color: $menuText;
   }
 
-  &__sub {
-    margin-top: 4px;
-    font-size: 12px;
-    color: $menuMuted;
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__view {
+    margin-right: 4px;
+  }
+
+  &__tabs {
+    margin-bottom: 12px;
+
+    ::v-deep .el-tabs__header {
+      margin-bottom: 0;
+    }
   }
 
   &__alert {
     margin-bottom: 14px;
-  }
-
-  &__stats {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
-    margin-bottom: 16px;
   }
 
   &__table {
@@ -539,6 +670,130 @@ export default {
     margin-top: 14px;
     display: flex;
     justify-content: flex-end;
+  }
+
+  &__danger {
+    color: $dangerColor;
+  }
+}
+
+/* 网格视图 */
+.dam-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  min-height: 120px;
+
+  &__empty {
+    grid-column: 1 / -1;
+    padding: 40px 0;
+    text-align: center;
+    font-size: 13px;
+    color: $menuMuted;
+  }
+}
+
+.dam-card {
+  background: $cardBg;
+  border: 1px solid $borderColor;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.2s, border-color 0.2s;
+
+  &:hover {
+    border-color: $primaryColor;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+
+    .dam-card__del {
+      opacity: 1;
+    }
+  }
+
+  &__thumb {
+    position: relative;
+    width: 100%;
+    padding-top: 70%;
+    background: $pageBg;
+  }
+
+  &__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+
+    ::v-deep img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+
+  &__ph {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    color: $menuMuted;
+  }
+
+  &__badge {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+  }
+
+  &__del {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  &__body {
+    padding: 10px 12px 12px;
+  }
+
+  &__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 600;
+    color: $menuText;
+  }
+
+  &__meta {
+    margin-top: 4px;
+    font-size: 12px;
+    color: $menuMuted;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.dam-delete {
+  &__target {
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: $menuText;
+    word-break: break-all;
+  }
+
+  &__modes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__tip {
+    margin-top: 12px;
   }
 }
 
@@ -566,30 +821,6 @@ export default {
     &--narrow {
       width: 110px;
     }
-  }
-
-  &__quick {
-    margin-top: 10px;
-  }
-}
-
-.dam-stat {
-  padding: 14px 16px;
-  background: $cardBg;
-  border: 1px solid $borderColor;
-  border-radius: 8px;
-
-  &__value {
-    font-size: 22px;
-    font-weight: 700;
-    color: $menuText;
-    line-height: 1.2;
-  }
-
-  &__label {
-    margin-top: 4px;
-    font-size: 12px;
-    color: $menuMuted;
   }
 }
 

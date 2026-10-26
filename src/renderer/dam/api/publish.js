@@ -18,6 +18,16 @@ export function listTargets(query) {
   return api.get("/targets" + buildQuery(query));
 }
 
+/**
+ * 登记一个社媒（发布）账号。
+ *
+ * 用在「媒体平台管理」里的账号还没落到服务端账号表时自动补登记：
+ * 服务端不认识本机的 account 数据，否则发布中心会看不到刚添加的账号。
+ */
+export function createTarget(payload) {
+  return api.post("/targets", payload);
+}
+
 /** 按发布计划计算每个平台的下一个可发日期 */
 export function publishSlots(platforms) {
   return api.get("/publish/slots" + buildQuery({ platforms: platforms.join(",") }));

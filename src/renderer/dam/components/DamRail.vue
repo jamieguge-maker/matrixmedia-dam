@@ -24,7 +24,7 @@
       <div class="dam-rail__group">
         <div class="dam-rail__label">系统设置</div>
         <button
-          v-for="item in settings"
+          v-for="item in visibleSettings"
           :key="item.key"
           type="button"
           class="dam-rail__item"
@@ -42,6 +42,16 @@
         <i class="el-icon-plus"></i>
         <span>添加媒体账号</span>
       </button>
+
+      <button type="button" class="dam-rail__user" @click="goProfile">
+        <span class="dam-rail__avatar">{{ avatarText }}</span>
+        <span class="dam-rail__user-info">
+          <span class="dam-rail__user-name">{{ displayName }}</span>
+          <span class="dam-rail__user-role">{{ roleText }}</span>
+        </span>
+        <i class="el-icon-setting dam-rail__user-set"></i>
+      </button>
+
       <div class="dam-rail__version">DAM 版 {{ version }}</div>
     </div>
 
@@ -53,6 +63,8 @@
 import { ipcRenderer } from "electron";
 import { useAppStore } from "@/store/app";
 import { usePermissionStore } from "@/store/permission";
+import { useDamSession } from "../store/session";
+import { roleLabel } from "../utils/format";
 import AddAccountDialog from "./AddAccountDialog.vue";
 
 export default {
@@ -60,16 +72,39 @@ export default {
   components: { AddAccountDialog },
   data() {
     return {
+      session: useDamSession(),
       version: "",
       showAdd: false,
       workspace: [
-        { key: "assets", label: "素材库", path: "/dam", icon: "el-icon-files" },
+        { key: "home", label: "欢迎面板", path: "/dam", icon: "el-icon-s-home" },
+        { key: "assets", label: "素材库", path: "/dam/assets", icon: "el-icon-files" },
         { key: "publish", label: "发布中心", path: "/dam/publish", icon: "el-icon-promotion" },
         { key: "records", label: "发布记录", path: "/dam/records", icon: "el-icon-document" },
         { key: "plans", label: "发布计划", path: "/dam/plans", icon: "el-icon-date" },
         { key: "metrics", label: "流量看板", path: "/dam/metrics", icon: "el-icon-data-line" }
       ],
       settings: [
+        {
+          key: "org",
+          label: "账号管理",
+          path: "/dam/org",
+          icon: "el-icon-s-custom",
+          adminOnly: true
+        },
+        {
+          key: "targets",
+          label: "社媒账号",
+          path: "/dam/targets",
+          icon: "el-icon-link",
+          adminOnly: true
+        },
+        {
+          key: "logs",
+          label: "操作记录",
+          path: "/dam/logs",
+          icon: "el-icon-tickets",
+          adminOnly: true
+        },
         { key: "dam-settings", label: "DAM 设置", path: "/dam/settings", icon: "el-icon-setting" },
         { key: "stats", label: "账号数据", path: "/data-stats", icon: "el-icon-user" },
         { key: "videos", label: "视频管理", path: "/video-manager", icon: "el-icon-video-camera" },
@@ -84,6 +119,28 @@ export default {
     },
     hideRail() {
       return Boolean(this.$route.meta && this.$route.meta.hideRail);
+    },
+    /** 只有管理员能看到「账号管理」 */
+    isAdmin() {
+      const user = this.session.state.user || {};
+      return Boolean(user.isSuperAdmin) || user.role === "admin";
+    },
+    visibleSettings() {
+      return this.settings.filter((item) => !item.adminOnly || this.isAdmin);
+    },
+    /** 底部个人账号信息 */
+    displayName() {
+      const user = this.session.state.user || {};
+      return user.displayName || user.username || "未登录";
+    },
+    roleText() {
+      const user = this.session.state.user || {};
+      if (user.isSuperAdmin) return "超级管理员";
+      return roleLabel(user.role);
+    },
+    avatarText() {
+      const name = this.displayName;
+      return name ? name.slice(0, 1).toUpperCase() : "?";
     }
   },
   watch: {
@@ -94,6 +151,8 @@ export default {
   created() {
     this.syncModule(this.$route.path);
     this.loadVersion();
+    // 身份来自 /auth/profile；路由守卫进入页面前已 restore，这里直接读内存状态
+    this.session.restore().catch(() => {});
   },
   methods: {
     async loadVersion() {
@@ -150,6 +209,11 @@ export default {
         .then(() => {
           this.$nextTick(() => this.openMediaManager());
         });
+    },
+    goProfile() {
+      if (this.currentPath !== "/dam/profile") {
+        this.$router.push("/dam/profile").catch(() => {});
+      }
     }
   }
 };
@@ -270,6 +334,67 @@ export default {
     margin-top: 8px;
     text-align: center;
     font-size: 11px;
+    color: $menuMuted;
+  }
+
+  &__user {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid $borderColor;
+    border-radius: 8px;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+
+    &:hover {
+      background: $menuHover;
+      border-color: $primaryColor;
+    }
+  }
+
+  &__avatar {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: $primaryColor;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  &__user-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__user-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: $menuText;
+  }
+
+  &__user-role {
+    font-size: 11px;
+    color: $menuMuted;
+  }
+
+  &__user-set {
+    flex: none;
+    font-size: 14px;
     color: $menuMuted;
   }
 }

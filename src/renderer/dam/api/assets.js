@@ -59,6 +59,16 @@ export function patchAssetStorage(id, payload) {
   return api.post(`/assets/${id}/storage`, payload);
 }
 
+/** 移入回收站（软删除，可在正式版「素材回收站」恢复） */
+export function deleteAsset(id) {
+  return api.del(`/assets/${id}`);
+}
+
+/** 彻底删除素材；deleteRemote=true 时连 WPS 云端文件一起删（仅管理员） */
+export function purgeAssets(ids, deleteRemote) {
+  return api.post("/assets/purge", { ids, deleteRemote: Boolean(deleteRemote) });
+}
+
 export function appendUploadLog(payload) {
   return api.post("/logs", payload);
 }

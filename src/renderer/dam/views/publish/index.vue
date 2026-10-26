@@ -22,13 +22,13 @@
     />
 
     <el-alert
-      v-if="!targetsLoading && !accounts.length"
+      v-if="!targetsLoading && emptyHint === 'no-accounts'"
       class="dam-publish__alert"
-      title="还没有可用的发布账号"
+      title="还没有可用的社媒账号"
       type="warning"
       :closable="false"
       show-icon
-      description="到「系统设置 → 媒体平台管理」添加账号并扫码登录后，再回到这里发布。"
+      :description="noAccountsHint"
     />
 
     <!-- ① 选择素材 -->
@@ -277,8 +277,14 @@
 import { assetPreviewUrls } from "../../api/assets";
 import { createPublishRecord, listTargets, publishSlots, updatePublishRecord } from "../../api/publish";
 import { mapMatrixMediaOutcome, publishToMatrixMedia } from "../../api/matrixmedia";
+import { useDamSession } from "../../store/session";
 import AssetPickerDialog from "../../components/AssetPickerDialog.vue";
 import { MM_ALIAS, platformLabel } from "../../utils/format";
+import {
+  loadLocalAccountKeys,
+  missingLocalAccounts,
+  syncLocalAccountsToServer
+} from "../../utils/localAccounts";
 
 function emptyContent() {
   return { title: "", description: "", tagsText: "", shortTitle: "" };
@@ -289,7 +295,12 @@ export default {
   components: { AssetPickerDialog },
   data() {
     return {
+      session: useDamSession(),
       targets: [],
+      /** 服务端返回的账号全集，用来区分「服务端没有账号」和「没分给我」 */
+      allTargets: [],
+      /** 本机「媒体平台管理」里有、但服务端账号表里没有的账号（`分组|平台`） */
+      localMissing: [],
       targetsLoading: false,
       targetsError: "",
       selectedAssets: [],
@@ -312,6 +323,22 @@ export default {
   computed: {
     accounts() {
       return this.targets.filter((target) => target.enabled !== false);
+    },
+    isAdmin() {
+      const user = this.session.state.user || {};
+      return Boolean(user.isSuperAdmin) || user.role === "admin";
+    },
+    /** 没有任何可用账号时提示（不再区分「没分给我」——分配功能已下线） */
+    emptyHint() {
+      return this.accounts.length ? "" : "no-accounts";
+    },
+    /** 没有可用账号时的说明：区分「本机还没添加」和「加了但服务端没登记」 */
+    noAccountsHint() {
+      const missing = this.localMissing.length;
+      if (missing) {
+        return `本机「媒体平台管理」里有 ${missing} 个账号，但还没登记到服务端，请稍后重试或联系管理员。`;
+      }
+      return "到「系统设置 → 媒体平台管理」添加账号并扫码登录后，再回到这里发布。";
     },
     platformGroups() {
       const map = new Map();
@@ -374,13 +401,31 @@ export default {
       this.targetsLoading = true;
       this.targetsError = "";
       try {
-        const rows = await listTargets();
-        this.targets = rows || [];
+        let rows = (await listTargets()) || [];
+
+        /**
+         * 账号直接取服务端数据库里的记录（不再按「负责人分配」过滤）。
+         *
+         * 顺带做一件「汇总」的事：谁在矩媒「媒体平台管理」里加了账号，
+         * 只要本机读得到，就自动补登记到服务端，保证各客户端添加的社媒
+         * 最终都汇集到同一个库里，管理员看到的就是全量。
+         * 没有创建权限（只读角色）或网络异常时静默跳过，不影响发布。
+         */
+        const keys = await loadLocalAccountKeys();
+        const created = await syncLocalAccountsToServer(rows, keys);
+        if (created) rows = (await listTargets()) || [];
+
+        this.allTargets = rows;
+        this.targets = rows;
+        this.localMissing = missingLocalAccounts(rows, keys);
+
         this.selectedTargetIds = this.selectedTargetIds.filter((id) =>
           this.targets.some((target) => target.id === id)
         );
       } catch (error) {
         this.targets = [];
+        this.allTargets = [];
+        this.localMissing = [];
         this.targetsError = (error && error.message) || "加载发布账号失败";
       } finally {
         this.targetsLoading = false;
