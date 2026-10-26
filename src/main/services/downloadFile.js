@@ -27,7 +27,6 @@ export default {
     ) {
       return
     }
-    mainWindow.webContents.downloadURL(downloadUrL)
     mainWindow.webContents.session.once('will-download', (event, item) => {
       const filePath = path.join(require('electron').app.getPath('downloads'), item.getFilename())
       item.setSavePath(filePath)
@@ -66,5 +65,6 @@ export default {
         }
       })
     })
+    mainWindow.webContents.downloadURL(downloadUrL)
   }
 }

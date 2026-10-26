@@ -18,10 +18,10 @@
       <div class="dam-upgrade__actions">
         <button
           class="dam-upgrade__btn dam-upgrade__btn--primary"
-          :disabled="!policy.downloadUrl"
+          :disabled="!policy.downloadUrl || downloading"
           @click="openDownload"
         >
-          下载安装包
+          {{ downloading ? "正在下载…" : "下载安装包" }}
         </button>
         <button class="dam-upgrade__btn" :disabled="checking" @click="check">
           {{ checking ? "检查中…" : "我已安装，重新检查" }}
@@ -64,7 +64,8 @@ export default {
       currentVersion: "",
       policy: {},
       message: "",
-      checkedAt: ""
+      checkedAt: "",
+      downloading: false
     };
   },
   mounted() {
@@ -75,6 +76,21 @@ export default {
       });
     };
     window.addEventListener("dam:check-updates", this.onManualCheck);
+    this.onDownloadDone = () => {
+      this.downloading = false;
+      this.message = "安装包下载完成，请按提示安装。";
+    };
+    this.onDownloadError = () => {
+      this.downloading = false;
+      this.message = "下载失败，请检查网络后重试。";
+    };
+    this.onDownloadPaused = () => {
+      this.downloading = false;
+      this.message = "下载中断，请检查网络后重试。";
+    };
+    ipcRenderer.on("download-done", this.onDownloadDone);
+    ipcRenderer.on("download-error", this.onDownloadError);
+    ipcRenderer.on("download-paused", this.onDownloadPaused);
     this.timer = setInterval(() => this.check(), CHECK_INTERVAL_MS);
     window.addEventListener("focus", this.onFocus);
     this.check();
@@ -83,6 +99,9 @@ export default {
     if (this.timer) clearInterval(this.timer);
     window.removeEventListener("dam:check-updates", this.onManualCheck);
     window.removeEventListener("focus", this.onFocus);
+    ipcRenderer.removeListener("download-done", this.onDownloadDone);
+    ipcRenderer.removeListener("download-error", this.onDownloadError);
+    ipcRenderer.removeListener("download-paused", this.onDownloadPaused);
   },
   methods: {
     async localVersion() {
@@ -167,12 +186,15 @@ export default {
     async openDownload() {
       if (!this.policy.downloadUrl) return;
       try {
-        const result = await ipcRenderer.invoke("dam:open-external", this.policy.downloadUrl);
+        const result = await ipcRenderer.invoke("dam:download-update", this.policy.downloadUrl);
         if (result && result.ok === false) {
-          this.message = result.message || "打开下载页失败";
+          this.message = result.message || "启动安装包下载失败";
+        } else {
+          this.downloading = true;
+          this.message = "安装包正在下载，完成后按提示安装。";
         }
       } catch (error) {
-        this.message = "打开下载页失败：" + ((error && error.message) || error);
+        this.message = "启动安装包下载失败：" + ((error && error.message) || error);
       }
     }
   }

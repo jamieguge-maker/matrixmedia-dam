@@ -4,11 +4,12 @@
  * 壳内 IPC。统一 dam: 前缀，避免与上游通道重名。
  */
 
-import { app, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { getConfig, setConfig } from "./config";
 import { readSession, writeSession, clearSession } from "./session";
 import { APP_NAME } from "./identity";
 import { registerUploadIpc } from "./upload";
+import downloadFile from "../services/downloadFile";
 
 const UPDATE_CHANNELS = ["check-for-updates", "start-update-download"];
 
@@ -55,6 +56,26 @@ export function registerDamIpc() {
       return { ok: false, message: "只允许打开 https 链接" };
     }
     await shell.openExternal(text);
+    return { ok: true };
+  });
+
+  ipcMain.handle("dam:download-update", (event, url) => {
+    let parsed;
+    try {
+      parsed = new URL(String(url || ""));
+    } catch (_) {
+      return { ok: false, message: "下载地址无效" };
+    }
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.hostname !== "github.com" ||
+      !parsed.pathname.startsWith("/jamieguge-maker/matrixmedia-dam/releases/download/")
+    ) {
+      return { ok: false, message: "只允许下载官方 GitHub Release 安装包" };
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return { ok: false, message: "主窗口已关闭，无法下载" };
+    downloadFile.download(win, parsed.href);
     return { ok: true };
   });
 
