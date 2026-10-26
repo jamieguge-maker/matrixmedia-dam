@@ -18,7 +18,7 @@ function safeSend(mainWindow, channel, ...args) {
 }
 
 export default {
-  download(mainWindow, downloadUrL) {
+  download(mainWindow, downloadUrL, options = {}) {
     if (
       !mainWindow ||
       mainWindow.isDestroyed() ||
@@ -30,6 +30,43 @@ export default {
     mainWindow.webContents.session.once('will-download', (event, item) => {
       const filePath = path.join(require('electron').app.getPath('downloads'), item.getFilename())
       item.setSavePath(filePath)
+      let resumeAttempts = 0
+      let resumePending = false
+      let finished = false
+      const updateStatus = (state, details = {}) => {
+        if (options.damUpdate) {
+          safeSend(mainWindow, 'dam-update-download-status', { state, ...details })
+        }
+      }
+      const failDownload = () => {
+        if (finished) return
+        finished = true
+        if (options.damUpdate) {
+          updateStatus('interrupted')
+        } else {
+          safeSend(mainWindow, 'download-paused', true)
+          dialog.showErrorBox('下载出错', '由于网络或其他未知原因导致下载出错.')
+        }
+      }
+      const retryOrFail = () => {
+        if (finished || resumePending) return
+        if (item.canResume() && resumeAttempts < 3) {
+          resumeAttempts += 1
+          resumePending = true
+          updateStatus('retrying', { attempt: resumeAttempts, maxAttempts: 3 })
+          setTimeout(() => {
+            resumePending = false
+            if (finished) return
+            try {
+              item.resume()
+            } catch (_) {
+              retryOrFail()
+            }
+          }, resumeAttempts * 1000)
+          return
+        }
+        failDownload()
+      }
       item.on('updated', (event, state) => {
         switch (state) {
           case 'progressing': {
@@ -39,26 +76,29 @@ export default {
                 ? ((item.getReceivedBytes() / total) * 100).toFixed(0)
                 : '0'
             safeSend(mainWindow, 'download-progress', pct)
+            updateStatus('progress', { percentage: Number(pct) })
             break
           }
           case 'interrupted':
-            safeSend(mainWindow, 'download-paused', true)
+            retryOrFail()
+            break
+          case 'cancelled':
+            failDownload()
             break
           default:
             break
         }
       })
-      item.once('done', (event, state) => {
+      item.on('done', (event, state) => {
         switch (state) {
           case 'completed':
+            if (finished) return
+            finished = true
             safeSend(mainWindow, 'download-done', { filePath })
+            updateStatus('completed')
             break
           case 'interrupted':
-            safeSend(mainWindow, 'download-error', true)
-            dialog.showErrorBox(
-              '下载出错',
-              '由于网络或其他未知原因导致下载出错.'
-            )
+            retryOrFail()
             break
           default:
             break

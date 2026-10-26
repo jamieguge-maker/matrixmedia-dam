@@ -15,13 +15,18 @@
 
       <pre v-if="policy.notes" class="dam-upgrade__notes">{{ policy.notes }}</pre>
 
+      <div v-if="downloading" class="dam-upgrade__progress">
+        <el-progress :percentage="downloadProgress" :stroke-width="12" />
+        <div class="dam-upgrade__progress-text">下载进度 {{ downloadProgress }}%</div>
+      </div>
+
       <div class="dam-upgrade__actions">
         <button
           class="dam-upgrade__btn dam-upgrade__btn--primary"
           :disabled="!policy.downloadUrl || downloading"
           @click="openDownload"
         >
-          {{ downloading ? "正在下载…" : "下载安装包" }}
+          {{ downloading ? "正在下载…" : downloadInterrupted ? "重新下载" : "下载安装包" }}
         </button>
         <button class="dam-upgrade__btn" :disabled="checking" @click="check">
           {{ checking ? "检查中…" : "我已安装，重新检查" }}
@@ -65,7 +70,9 @@ export default {
       policy: {},
       message: "",
       checkedAt: "",
-      downloading: false
+      downloading: false,
+      downloadProgress: 0,
+      downloadInterrupted: false
     };
   },
   mounted() {
@@ -78,19 +85,42 @@ export default {
     window.addEventListener("dam:check-updates", this.onManualCheck);
     this.onDownloadDone = () => {
       this.downloading = false;
+      this.downloadProgress = 100;
+      this.downloadInterrupted = false;
       this.message = "安装包下载完成，请按提示安装。";
     };
     this.onDownloadError = () => {
       this.downloading = false;
+      this.downloadInterrupted = true;
       this.message = "下载失败，请检查网络后重试。";
     };
     this.onDownloadPaused = () => {
       this.downloading = false;
+      this.downloadInterrupted = true;
       this.message = "下载中断，请检查网络后重试。";
+    };
+    this.onUpdateDownloadStatus = (_event, status) => {
+      if (!status) return;
+      if (status.state === "progress") {
+        this.downloadProgress = Math.max(0, Math.min(100, Number(status.percentage) || 0));
+      } else if (status.state === "retrying") {
+        this.downloading = true;
+        this.downloadInterrupted = false;
+        this.message = `网络中断，正在尝试恢复下载（${status.attempt}/${status.maxAttempts}）…`;
+      } else if (status.state === "interrupted") {
+        this.downloading = false;
+        this.downloadInterrupted = true;
+        this.message = "下载多次中断，请检查网络后点击重新下载。";
+      } else if (status.state === "completed") {
+        this.downloading = false;
+        this.downloadProgress = 100;
+        this.downloadInterrupted = false;
+      }
     };
     ipcRenderer.on("download-done", this.onDownloadDone);
     ipcRenderer.on("download-error", this.onDownloadError);
     ipcRenderer.on("download-paused", this.onDownloadPaused);
+    ipcRenderer.on("dam-update-download-status", this.onUpdateDownloadStatus);
     this.timer = setInterval(() => this.check(), CHECK_INTERVAL_MS);
     window.addEventListener("focus", this.onFocus);
     this.check();
@@ -102,6 +132,7 @@ export default {
     ipcRenderer.removeListener("download-done", this.onDownloadDone);
     ipcRenderer.removeListener("download-error", this.onDownloadError);
     ipcRenderer.removeListener("download-paused", this.onDownloadPaused);
+    ipcRenderer.removeListener("dam-update-download-status", this.onUpdateDownloadStatus);
   },
   methods: {
     async localVersion() {
@@ -186,14 +217,19 @@ export default {
     async openDownload() {
       if (!this.policy.downloadUrl) return;
       try {
+        this.downloadProgress = 0;
+        this.downloadInterrupted = false;
         const result = await ipcRenderer.invoke("dam:download-update", this.policy.downloadUrl);
         if (result && result.ok === false) {
           this.message = result.message || "启动安装包下载失败";
+          this.downloadInterrupted = true;
         } else {
           this.downloading = true;
           this.message = "安装包正在下载，完成后按提示安装。";
         }
       } catch (error) {
+        this.downloading = false;
+        this.downloadInterrupted = true;
         this.message = "启动安装包下载失败：" + ((error && error.message) || error);
       }
     }
@@ -266,6 +302,17 @@ export default {
   line-height: 1.7;
   white-space: pre-wrap;
   font-family: inherit;
+}
+
+.dam-upgrade__progress {
+  margin: 0 0 14px;
+}
+
+.dam-upgrade__progress-text {
+  margin-top: 4px;
+  text-align: right;
+  color: #6b7280;
+  font-size: 12px;
 }
 
 .dam-upgrade__actions {

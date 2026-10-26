@@ -75,7 +75,7 @@ export function registerDamIpc() {
     }
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return { ok: false, message: "主窗口已关闭，无法下载" };
-    downloadFile.download(win, parsed.href);
+    downloadFile.download(win, parsed.href, { damUpdate: true });
     return { ok: true };
   });
 
