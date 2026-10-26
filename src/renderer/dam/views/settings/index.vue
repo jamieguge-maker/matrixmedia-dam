@@ -77,6 +77,9 @@
     <el-card shadow="never" class="dam-settings__card">
       <div slot="header" class="dam-settings__head">
         <span class="dam-settings__title">运行信息</span>
+        <el-button size="small" icon="el-icon-refresh" :loading="checkingUpdate" @click="checkUpdates">
+          检查更新
+        </el-button>
       </div>
 
       <el-descriptions :column="1" border size="small">
@@ -104,7 +107,8 @@ export default {
       apiBase: "",
       info: {},
       saving: false,
-      loading: false
+      loading: false,
+      checkingUpdate: false
     };
   },
   computed: {
@@ -161,6 +165,25 @@ export default {
       } finally {
         this.saving = false;
       }
+    },
+    checkUpdates() {
+      if (this.checkingUpdate) return;
+      this.checkingUpdate = true;
+      const timeout = setTimeout(() => finish({ status: "unavailable" }), 15000);
+      const finish = (result) => {
+        clearTimeout(timeout);
+        this.checkingUpdate = false;
+        if (!result || result.status === "unavailable") {
+          this.$message.warning("暂时无法获取版本信息，请检查网络后重试");
+        } else if (result.status === "current") {
+          this.$message.success(`当前已是最新版本 v${result.currentVersion}`);
+        } else if (result.status === "upgrade") {
+          this.$message.info(`发现新版本 v${result.latestVersion}，请按提示下载安装`);
+        } else if (result.status === "checking") {
+          this.$message.info("正在检查更新，请稍后重试");
+        }
+      };
+      window.dispatchEvent(new CustomEvent("dam:check-updates", { detail: { resolve: finish } }));
     },
     async logout() {
       await this.session.logout();

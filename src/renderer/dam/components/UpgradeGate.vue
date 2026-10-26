@@ -68,12 +68,20 @@ export default {
     };
   },
   mounted() {
+    this.onManualCheck = (event) => {
+      this.check(true).then((result) => {
+        const resolve = event && event.detail && event.detail.resolve;
+        if (typeof resolve === "function") resolve(result);
+      });
+    };
+    window.addEventListener("dam:check-updates", this.onManualCheck);
     this.timer = setInterval(() => this.check(), CHECK_INTERVAL_MS);
     window.addEventListener("focus", this.onFocus);
     this.check();
   },
   beforeDestroy() {
     if (this.timer) clearInterval(this.timer);
+    window.removeEventListener("dam:check-updates", this.onManualCheck);
     window.removeEventListener("focus", this.onFocus);
   },
   methods: {
@@ -92,11 +100,14 @@ export default {
     },
     /** 拉一次策略；manual=true 表示用户主动点了「重新检查」 */
     async check(manual) {
-      if (this.checking) return;
+      if (this.checking) return { status: "checking" };
       this.checking = true;
       try {
         const currentVersion = await this.localVersion();
         const policy = (await fetchClientVersionPolicy()) || {};
+        if (!policy.latestVersion && !policy.minVersion) {
+          return { status: "unavailable" };
+        }
         const result = evaluateUpgrade(currentVersion, policy);
 
         this.currentVersion = currentVersion;
@@ -113,24 +124,25 @@ export default {
         if (!result.needUpgrade) {
           this.visible = false;
           this.message = "";
-          if (manual) this.message = "已是最新版本";
-          return;
+          return { status: "current", currentVersion, latestVersion: policy.latestVersion || currentVersion };
         }
 
-        if (this.isSnoozed()) {
+        if (!manual && this.isSnoozed()) {
           this.visible = false;
-          return;
+          return { status: "snoozed", currentVersion, latestVersion: result.latestVersion };
         }
 
         this.visible = true;
         if (manual) {
-          this.message = `仍是 ${currentVersion}，请确认安装的版本不低于 ${result.minVersion || result.latestVersion}`;
+          this.message = "新版本已发布，请下载安装并重启应用。";
         } else {
           this.message = "";
         }
+        return { status: "upgrade", currentVersion, latestVersion: result.latestVersion };
       } catch (_) {
         // 网络不通 / 服务端未部署该接口：不打扰用户，下次再试
         if (manual) this.message = "无法连接服务端，请检查网络后重试";
+        return { status: "unavailable" };
       } finally {
         this.checking = false;
       }
