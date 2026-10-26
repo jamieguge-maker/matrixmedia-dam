@@ -3,6 +3,7 @@ name: Upload Electron Package
 on:
   push:
     branches:
+      - main
       - prod
 
 jobs:
