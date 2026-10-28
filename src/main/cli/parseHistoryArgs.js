@@ -1,29 +1,12 @@
 "use strict";
 
-const PLATFORM_ALIASES = {
-  dy: "抖音",
-  douyin: "抖音",
-  抖音: "抖音",
-  sph: "视频号",
-  视频号: "视频号",
-  blbl: "哔哩哔哩",
-  bilibili: "哔哩哔哩",
-  哔哩哔哩: "哔哩哔哩",
-  bjh: "百家号",
-  百家号: "百家号",
-  tt: "头条",
-  toutiao: "头条",
-  头条: "头条",
-  ks: "快手",
-  kuaishou: "快手",
-  快手: "快手",
-  fqsp: "番茄视频",
-  fanqie: "番茄视频",
-  fq: "番茄视频",
-  番茄视频: "番茄视频",
-};
+import {
+  PLATFORM_ALIASES,
+  VIDEO_PUBLISH_CANONICAL,
+} from "../../shared/publishPlatforms.js";
 
-const CANONICAL = ["抖音", "视频号", "哔哩哔哩", "百家号", "头条", "快手", "番茄视频"];
+// 平台别名与可筛选平台列表复用发布侧的单一来源，避免新增平台（如小红书）时这里漏改（#49）
+const CANONICAL = VIDEO_PUBLISH_CANONICAL;
 const STATUS_ALIASES = {
   success: "success",
   ok: "success",
@@ -39,7 +22,39 @@ const STATUS_ALIASES = {
   expired: "expired",
   过期: "expired",
   任务过期: "expired",
+  draft: "draft",
+  草稿: "draft",
+  已保存草稿: "draft",
+  drafting: "drafting",
+  保存草稿中: "drafting",
+  abnormal: "abnormal",
+  异常: "abnormal",
+  发布异常: "abnormal",
+  skipped: "skipped",
+  跳过: "skipped",
+  已跳过: "skipped",
 };
+
+const STATUS_LIST = "success|failed|publishing|scheduled|expired|draft|drafting|abnormal|skipped";
+
+/** 带值选项的值不能缺失，也不能是下一个选项（以 - 开头） */
+function readValue(args, i, flag) {
+  const v = args[i + 1];
+  if (v === undefined || (typeof v === "string" && /^-/.test(v))) {
+    return { ok: false, error: `${flag} 需要一个值，例如 ${flag} <值>` };
+  }
+  return { ok: true, value: v, next: i + 1 };
+}
+
+/** 严格正整数：拒绝 "30garbage"、"2.5"、"-3" 之类被 parseInt 静默截断的输入 */
+function readPositiveInt(args, i, flag, unit) {
+  const v = readValue(args, i, flag);
+  if (!v.ok) return v;
+  if (!/^\d+$/.test(String(v.value).trim()) || parseInt(v.value, 10) < 1) {
+    return { ok: false, error: `${flag} 需为正整数${unit ? `（${unit}）` : ""}` };
+  }
+  return { ok: true, value: parseInt(v.value, 10), next: i + 1 };
+}
 
 export function parseHistoryArgs(subArgv) {
   const args = Array.isArray(subArgv) ? subArgv : [];
@@ -61,27 +76,40 @@ export function parseHistoryArgs(subArgv) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--platform" || a === "-p") {
-      out.platform = args[++i];
+      const v = readValue(args, i, a);
+      if (!v.ok) return v;
+      out.platform = v.value;
+      i = v.next;
     } else if (a === "--phone") {
-      out.phone = args[++i];
+      const v = readValue(args, i, a);
+      if (!v.ok) return v;
+      out.phone = v.value;
+      i = v.next;
     } else if (a === "--status" || a === "-s") {
-      out.status = args[++i];
+      const v = readValue(args, i, a);
+      if (!v.ok) return v;
+      out.status = v.value;
+      i = v.next;
     } else if (a === "--days" || a === "-d") {
-      const n = parseInt(args[++i], 10);
-      if (!Number.isFinite(n) || n < 1) {
-        return { ok: false, error: "--days 需为正整数（天）" };
-      }
-      out.days = n;
+      const v = readPositiveInt(args, i, a, "天");
+      if (!v.ok) return v;
+      out.days = v.value;
+      i = v.next;
     } else if (a === "--limit" || a === "-n") {
-      const n = parseInt(args[++i], 10);
-      if (!Number.isFinite(n) || n < 1) {
-        return { ok: false, error: "--limit 需为正整数" };
-      }
-      out.limit = n;
+      const v = readPositiveInt(args, i, a);
+      if (!v.ok) return v;
+      out.limit = v.value;
+      i = v.next;
     } else if (a === "--since") {
-      out.since = args[++i];
+      const v = readValue(args, i, a);
+      if (!v.ok) return v;
+      out.since = v.value;
+      i = v.next;
     } else if (a === "--until") {
-      out.until = args[++i];
+      const v = readValue(args, i, a);
+      if (!v.ok) return v;
+      out.until = v.value;
+      i = v.next;
     } else if (a === "--json") {
       out.json = true;
     } else {
@@ -102,7 +130,7 @@ export function parseHistoryArgs(subArgv) {
     const raw = String(out.status).trim().toLowerCase();
     const st = STATUS_ALIASES[raw] || STATUS_ALIASES[String(out.status).trim()];
     if (!st) {
-      return { ok: false, error: `未知状态: ${out.status}（支持 success|failed|publishing|scheduled|expired）` };
+      return { ok: false, error: `未知状态: ${out.status}（支持 ${STATUS_LIST}）` };
     }
     out.status = st;
   }
@@ -125,10 +153,12 @@ export function historyHelpText() {
 数据来源：<Documents>/MatrixMedia/data/pushData/YYYY-MM-DD.json。
 
 选项:
-  -p, --platform <id>   仅列某个平台：dy|抖音、tt|头条、ks|快手、blbl|哔哩哔哩、bjh|百家号、sph|视频号、fqsp|番茄视频
+  -p, --platform <id>   仅列某个平台：dy|抖音、tt|头条、ks|快手、blbl|哔哩哔哩、bjh|百家号、sph|视频号、xhs|小红书、fqsp|番茄视频
       --phone <id>      仅列某个手机号
-  -s, --status <s>      仅列某个状态：success|failed|publishing|scheduled|expired
-                          （中文同义：成功|失败|发布中|等待定时发布|任务过期）
+  -s, --status <s>      仅列某个状态：success|failed|publishing|scheduled|expired|
+                          draft|drafting|abnormal|skipped
+                          （中文同义：成功|失败|发布中|等待定时发布|任务过期|
+                          已保存草稿|保存草稿中|发布异常|已跳过）
   -d, --days <n>        读取最近 N 天，默认 7；与 --since/--until 冲突时以 since/until 为准
       --since <date>    起始日期（含），YYYY-MM-DD
       --until <date>    结束日期（含），YYYY-MM-DD

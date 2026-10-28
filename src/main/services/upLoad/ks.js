@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "fs";
 import {
   readPageUrl,
   replyPublishFailure,
@@ -14,6 +15,263 @@ import {
   WAIT_UPLOAD_PROCESSING_MS,
   pollPageUntil,
 } from "./uploadTimeouts.js";
+
+export const KS_DESCRIPTION_SELECTOR = "#work-description-edit";
+
+function collapseText(t) {
+  return String(t || "").replace(/\s+/g, "");
+}
+
+/** 读取快手描述编辑器当前内容（页面已销毁时返回空串） */
+function readKsDescription(page) {
+  return page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    return el ? String(el.innerText || el.textContent || "") : "";
+  }, KS_DESCRIPTION_SELECTOR);
+}
+
+/**
+ * 快手没有单独的标题输入框，作品标题取自描述文案；用户填了标题时把它拼在描述最前面
+ * （描述已以标题开头时不重复拼接）。#34
+ */
+export function composeKsFillText({ title, description } = {}) {
+  const t = String(title || "").trim();
+  const d = String(description || "").trim();
+  if (!t) return d;
+  if (!d) return t;
+  if (collapseText(d).startsWith(collapseText(t))) return d;
+  return `${t}\n${d}`;
+}
+
+/**
+ * 往快手描述编辑器（#work-description-edit，contenteditable 自定义组件）写文案。
+ *
+ * keyboard.type 对这类组件在隐藏窗口/遮罩残留时经常不落地（#34：静默发出空标题作品），
+ * 所以每次写入后必须回读校验：
+ *   1. 主路径 click 聚焦 + keyboard.type；
+ *   2. 回读未落地 → 清空后用 document.execCommand('insertText') 兜底（同小红书适配器）；
+ *   3. 重试 maxAttempts 次（默认 3），仍失败则抛错中止发布，
+ *      宁可走失败上报/自动重试，也不能把空标题/空简介的作品发出去。
+ */
+export async function fillKsDescription(page, fillText, { maxAttempts = 3 } = {}) {
+  await page.waitForSelector(KS_DESCRIPTION_SELECTOR, {
+    timeout: WAIT_SELECTOR_APPEAR_MS,
+  });
+  const expected = collapseText(fillText);
+  let landed = "";
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // 聚焦 + 清空旧内容：puppeteer click 定位 caret，evaluate focus 双保险，再全选删除
+    try {
+      await page.click(KS_DESCRIPTION_SELECTOR, { clickCount: 3 });
+    } catch (_) {
+      // click 偶发失败不致命，下面 evaluate focus 兜底
+    }
+    await page.evaluate((sel) => {
+      var el = document.querySelector(sel);
+      if (!el) return;
+      el.focus();
+      var s = window.getSelection && window.getSelection();
+      if (s && s.selectAllChildren) {
+        try {
+          s.selectAllChildren(el);
+        } catch (_) {}
+      }
+      if (document.execCommand) document.execCommand("delete");
+    }, KS_DESCRIPTION_SELECTOR);
+    if (fillText) {
+      await page.keyboard.type(fillText, { delay: 50 });
+    }
+
+    landed = collapseText(await readKsDescription(page));
+    if (!expected || (landed && landed.includes(expected))) {
+      if (attempt > 1) console.log(`[ks] 描述已在第 ${attempt} 次尝试写入`);
+      return true;
+    }
+    console.warn(
+      `[ks] 第 ${attempt} 次填写描述未落地（回读到 ${landed.length} 字），尝试 execCommand 兜底`
+    );
+
+    // 兜底：全选删除后 insertText，对富文本组件比键盘事件可靠
+    await page.evaluate(
+      (payload) => {
+        var el = document.querySelector(payload.sel);
+        if (!el) return;
+        el.focus();
+        if (document.createRange && window.getSelection) {
+          try {
+            var r = document.createRange();
+            r.selectNodeContents(el);
+            var s = window.getSelection();
+            s.removeAllRanges();
+            s.addRange(r);
+          } catch (_) {}
+        }
+        if (document.execCommand) {
+          document.execCommand("delete");
+          document.execCommand("insertText", false, payload.text);
+        }
+      },
+      { sel: KS_DESCRIPTION_SELECTOR, text: fillText }
+    );
+
+    landed = collapseText(await readKsDescription(page));
+    if (!expected || (landed && landed.includes(expected))) {
+      console.log(`[ks] 描述已通过 execCommand 兜底写入（第 ${attempt} 次尝试）`);
+      return true;
+    }
+  }
+
+  throw new Error(
+    `快手描述填写失败：尝试 ${maxAttempts} 次后文案仍未写入编辑器（编辑器当前 ${landed.length} 字），为避免发出空标题/空简介的作品已中止本次发布`
+  );
+}
+
+/**
+ * 快手自定义封面（探针实证配方）：
+ * 封面设置区渲染晚于预览 video（要等「封面设置/智能推荐封面」文案出现）；
+ * 点 [class*="_cover-full-editor"] → ant-modal（封面截取/上传封面两 tab）→
+ * 「上传封面」tab → modal 内隐藏 file input（_cropper-upload-upload）注入 →
+ * 裁剪比例选 3:4（推荐）→ 确认 → 校验 _default-cover 槽位 img src 变化（blob 帧图→新封面）。
+ */
+async function uploadKsCustomCover(page, coverPath) {
+  if (!fs.existsSync(coverPath)) {
+    throw new Error(`封面文件不存在: ${coverPath}`);
+  }
+
+  await page
+    .waitForFunction(
+      () => {
+        const t = document.body.innerText || "";
+        return t.includes("封面设置") || t.includes("智能推荐封面");
+      },
+      { timeout: 60000 }
+    )
+    .catch(() => {
+      throw new Error("等待快手封面设置区出现超时（60s）");
+    });
+
+  const slotSrcBefore = await page.evaluate(() => {
+    const img = document.querySelector('[class*="_default-cover"] img');
+    return img ? img.src : "";
+  });
+
+  const opened = await page.evaluate(() => {
+    const el =
+      document.querySelector('[class*="_cover-full-editor"]') ||
+      document.querySelector('[class*="_default-cover"]');
+    if (!el) return false;
+    el.click();
+    return true;
+  });
+  if (!opened) throw new Error("未找到快手「封面设置」入口");
+  await page.waitForSelector(".ant-modal", { visible: true, timeout: 15000 });
+  await page.waitForTimeout(1200);
+
+  const tabbed = await page.evaluate(() => {
+    const norm = (t) => String(t || "").replace(/\s+/g, "").trim();
+    const m = document.querySelector(".ant-modal");
+    if (!m) return false;
+    for (const el of m.querySelectorAll("*")) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || el.children.length > 2) continue;
+      if (norm(el.textContent) === "上传封面") {
+        el.click();
+        return true;
+      }
+    }
+    return false;
+  });
+  if (!tabbed) throw new Error("快手封面弹窗内未找到「上传封面」tab");
+  await page.waitForTimeout(1200);
+
+  const inputHandle = await page.evaluateHandle(() => {
+    const m = document.querySelector(".ant-modal");
+    if (!m) return null;
+    return (
+      m.querySelector('input[type="file"]') ||
+      m.querySelector('[class*="cropper-upload"] input') ||
+      null
+    );
+  });
+  const inputEl = inputHandle.asElement();
+  if (!inputEl) throw new Error("快手封面弹窗内未找到图片 file input");
+  await inputEl.uploadFile(path.resolve(coverPath));
+  console.log("[ks] 封面文件已注入上传区:", coverPath);
+
+  // 等裁剪器加载出图片（canvas 或 cropper/preview img）
+  await page
+    .waitForFunction(
+      () => {
+        const m = document.querySelector(".ant-modal");
+        if (!m) return false;
+        return !!(
+          m.querySelector("canvas") ||
+          m.querySelector('[class*="cropper"] img') ||
+          m.querySelector('[class*="preview"] img')
+        );
+      },
+      { timeout: 20000 }
+    )
+    .catch(() => console.warn("[ks] 未观察到裁剪器加载信号，继续尝试"));
+  await page.waitForTimeout(1500);
+
+  // 裁剪比例选 3:4（推荐）——3:4 原图（如 1080x1440）选中后无裁损
+  const ratio = await page.evaluate(() => {
+    const norm = (t) => String(t || "").replace(/\s+/g, "").trim();
+    const m = document.querySelector(".ant-modal");
+    if (!m) return { ok: false, reason: "no-modal" };
+    const cands = [];
+    for (const el of m.querySelectorAll('[class*="ratio"] *')) {
+      const t = norm(el.textContent);
+      if ((t === "3:4" || t === "3:4推荐") && el.children.length <= 2) {
+        cands.push(el);
+      }
+    }
+    if (!cands.length) return { ok: false, reason: "no-3:4-option" };
+    cands.sort((a, b) => a.children.length - b.children.length);
+    cands[0].click();
+    return { ok: true, count: cands.length };
+  });
+  console.log("[ks] 裁剪比例 3:4 选择:", JSON.stringify(ratio));
+  // 与其它步骤口径一致：找不到 3:4 选项即失败抛错中止，不容忍平台按默认比例裁剪
+  if (!ratio.ok) {
+    throw new Error(`快手封面裁剪未选到 3:4 比例（${ratio.reason}）`);
+  }
+  await page.waitForTimeout(1000);
+
+  const confirmed = await page.evaluate(() => {
+    const norm = (t) => String(t || "").replace(/\s+/g, "").trim();
+    const m = document.querySelector(".ant-modal");
+    if (!m) return false;
+    for (const b of m.querySelectorAll("button,[role='button']")) {
+      const r = b.getBoundingClientRect();
+      if (r.width > 0 && !b.disabled && norm(b.textContent) === "确认") {
+        b.click();
+        return true;
+      }
+    }
+    return false;
+  });
+  if (!confirmed) throw new Error("快手封面弹窗内未找到「确认」按钮");
+  await page.waitForTimeout(3500);
+
+  // 校验：封面槽位 img src 相对设置前变化（原为 blob: 视频帧图）；快手 CDN 域名为强信号
+  const after = await page.evaluate(() => {
+    const img = document.querySelector('[class*="_default-cover"] img');
+    return img ? img.src : "";
+  });
+  const changed = !!after && after !== slotSrcBefore;
+  if (!changed) {
+    throw new Error(
+      `快手封面设置后槽位图片未变化（src=${(after || "").slice(0, 120)}）`
+    );
+  }
+  const cdn = /ssrcdn|kwaicdn|kwcdn|kscdn|yximgs/.test(after);
+  console.log(
+    `[ks] 自定义封面已设置并校验通过（src变化=true, CDN=${cdn}）: ${after.slice(0, 120)}`
+  );
+}
 
 async function selectKsCreativeStatement(page, data) {
   const value = data.data && data.data.creativeStatement;
@@ -194,6 +452,7 @@ export default async function (page, data, window, event) {
   const submitText = isDraftMode ? "取消" : "发布";
 
   console.log(data);
+  let descFillText = "";
   try {
     let sel = '#joyride-wrapper input[type="file"]';
     await page.waitForSelector(sel, { timeout: WAIT_SELECTOR_APPEAR_MS });
@@ -203,17 +462,15 @@ export default async function (page, data, window, event) {
     console.error("文件上传失败:", err);
   }
 
+  // 描述（含标题拼接）填写：回读校验 + execCommand 兜底，失败抛错中止发布（#34）。
+  // 抛错交给上层失败上报/自动重试，避免静默发出空标题/空简介的作品。
   try {
     const text = buildPlatformVideoText("快手", data.data);
-    const selector = "#work-description-edit";
-    await page.waitForSelector(selector, { timeout: WAIT_SELECTOR_APPEAR_MS });
-    const input = await page.$(selector);
-    await input.click();
-    if (text.description) {
-      await page.keyboard.type(text.description, { delay: 50 });
-    }
+    descFillText = composeKsFillText(text);
+    await fillKsDescription(page, descFillText);
   } catch (e) {
-    console.error("❌ 输入标题失败", e);
+    console.error("❌ 快手描述填写失败:", e?.message || e);
+    throw e;
   }
   try {
     await page.click(".ant-checkbox-group>label:nth-of-type(2)", {
@@ -240,6 +497,14 @@ export default async function (page, data, window, event) {
       2000,
       "等待快手视频上传完成超时"
     );
+
+    // 自定义封面：仅当传入 coverPath；失败抛错中止本次发布
+    // （封面是缩略图点击的命脉，不允许静默跳过——与抖音流程同策略）
+    const coverPath = data.data && data.data.coverPath;
+    if (coverPath) {
+      await uploadKsCustomCover(page, coverPath);
+    }
+
     await page.waitForFunction(
       (text) => {
         const bar = document.querySelector("#setting-tours + div");
@@ -258,6 +523,13 @@ export default async function (page, data, window, event) {
     // 在 hidden window 下几何中心常落不到真正的 <button> 上，结果是"看起来点过了但没发"。
     // 改为在 evaluate 内部遍历真实 button / 行 div，直接调 DOM .click()，避开鼠标几何问题。
     // 快手草稿功能和发布一个逻辑一个是 发布 一个是取消两个字
+    // 提交前最后回读一次：编辑器被页面清空/重置时中止，避免发出空标题简介的作品（#34）
+    if (descFillText) {
+      const landed = await readKsDescription(page);
+      if (!collapseText(landed)) {
+        throw new Error("提交前校验失败：快手描述编辑器为空（可能被页面重置），已中止发布");
+      }
+    }
     const urlBefore = readPageUrl(page);
     const clicked = await page.evaluate((text) => {
       const norm = (t) =>

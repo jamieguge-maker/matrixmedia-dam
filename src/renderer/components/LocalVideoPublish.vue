@@ -17,34 +17,58 @@
           />
         </el-form-item>
         <el-form-item label="视频标题">
-          <el-input v-model="form.bt1" placeholder="发布时使用的标题" />
+          <div class="ai-field-row">
+            <el-input v-model="form.bt1" placeholder="发布时使用的标题" />
+            <ai-generate-button
+              :active="metaVisible"
+              kind="title"
+              :get-context="getAiContext"
+              @generated="onAiTitle"
+            />
+          </div>
         </el-form-item>
         <el-form-item label="视频简介">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            :rows="4"
-            maxlength="2000"
-            show-word-limit
-            placeholder="选填，将作为各平台正文或简介"
-          />
+          <div class="ai-field-row">
+            <el-input
+              v-model="form.description"
+              type="textarea"
+              :rows="4"
+              maxlength="2000"
+              show-word-limit
+              placeholder="选填，将作为各平台正文或简介"
+            />
+            <ai-generate-button
+              :active="metaVisible"
+              kind="body"
+              :get-context="getAiContext"
+              @generated="onAiBody"
+            />
+          </div>
         </el-form-item>
         <el-form-item label="视频标签">
-          <el-select
-            ref="bqSelect"
-            v-model="bqTags"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            no-data-text="请输入标签"
-            placeholder="输入标签，回车/空格添加；支持批量粘贴 #标签1 #标签2"
-            style="width: 100%"
-            @paste.native.capture="onBqPaste"
-            @compositionstart.native.capture="onBqCompositionStart"
-            @compositionend.native.capture="onBqCompositionEnd"
-            @keydown.native.capture="onBqKeydown"
-          ></el-select>
+          <div class="ai-field-row">
+            <el-select
+              ref="bqSelect"
+              v-model="bqTags"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              no-data-text="请输入标签"
+              placeholder="输入标签，回车/空格添加；支持批量粘贴 #标签1 #标签2"
+              style="width: 100%"
+              @paste.native.capture="onBqPaste"
+              @compositionstart.native.capture="onBqCompositionStart"
+              @compositionend.native.capture="onBqCompositionEnd"
+              @keydown.native.capture="onBqKeydown"
+            ></el-select>
+            <ai-generate-button
+              :active="metaVisible"
+              kind="tags"
+              :get-context="getAiContext"
+              @generated="onAiTags"
+            />
+          </div>
         </el-form-item>
         <el-form-item label="视频号短标题">
           <el-input
@@ -587,6 +611,7 @@ import {
   validateVideohaoBt2 as validateVideohaoBt2Value,
 } from "@/utils/localVideoPublishBt2";
 import { normalizeVideoMetadata } from "../../shared/videoMetadata.js";
+import AiGenerateButton from "@/components/ai/AiGenerateButton.vue";
 
 function fileBaseName(p) {
   if (!p) return "";
@@ -623,6 +648,7 @@ function sleep(ms) {
 
 export default {
   name: "LocalVideoPublish",
+  components: { AiGenerateButton },
   data() {
     return {
       ptConfig,
@@ -663,6 +689,7 @@ export default {
       publishAt: "",
       republishContext: null,
       republishTextOtherName: "",
+      republishCoverPath: "",
       showLoginDialog: false,
       loginData: {},
       treeData: [],
@@ -734,6 +761,26 @@ export default {
   },
   methods: {
     platformSupportsCreativeStatement,
+    /** AI 生成素材：名称（默认文件名）+ 已填的标题 / 简介 / 标签 */
+    getAiContext() {
+      return {
+        contentType: "video",
+        name: this.form.title,
+        title: this.form.bt1,
+        body: this.form.description,
+        tags: this.bqTags,
+      };
+    },
+    onAiTitle(value) {
+      this.form.bt1 = value;
+    },
+    onAiBody(value) {
+      this.form.description = String(value || "").slice(0, 2000);
+    },
+    /** 生成的标签追加到已有标签后，自动去重 */
+    onAiTags(list) {
+      this._pushBqTags(list);
+    },
     platformSupportsVideoLink,
     /** 把字符串按 # / 空格 / 逗号 / 分号 / 顿号 切成多个标签 */
     _splitBqTokens(raw) {
@@ -841,6 +888,7 @@ export default {
       this.publishAt = "";
       this.republishContext = null;
       this.republishTextOtherName = "";
+      this.republishCoverPath = "";
       this.metaVisible = true;
     },
     openRepublish(payload = {}) {
@@ -866,6 +914,7 @@ export default {
       this.scheduledPublish = false;
       this.publishAt = "";
       this.republishTextOtherName = payload.textOtherName || fileStem(filePath);
+      this.republishCoverPath = form.coverPath || "";
       this.republishContext = {
         records: Array.isArray(payload.records) ? payload.records : [],
         failedTargets: Array.isArray(payload.failedTargets)
@@ -952,6 +1001,7 @@ export default {
           tags: metadata.tags,
           ...metadata.legacy,
           bq: formatBqFromTags(this.bqTags),
+          coverPath: this.republishCoverPath || "",
         },
       };
     },
@@ -1537,6 +1587,7 @@ export default {
       this.publishAt = "";
       this.republishContext = null;
       this.republishTextOtherName = "";
+      this.republishCoverPath = "";
       this.dirBatchFiles = [];
       this.attrsVisible = false;
     },
@@ -2332,6 +2383,15 @@ export default {
 </script>
 
 <style scoped>
+.ai-field-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.ai-field-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
 .file-line {
   margin-bottom: 16px;
   word-break: break-all;

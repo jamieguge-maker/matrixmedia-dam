@@ -61,7 +61,7 @@ electron . cli login -p sph --phone 宠物 --show
 无显示器或 SSH 环境下请用 `xvfb-run -a` 提供虚拟显示：
 
 ```bash
-xvfb-run -a ./矩媒.AppImage cli login -p dy --phone 13800138000
+xvfb-run -a ./MatrixMedia-*-linux-x86_64.AppImage cli login -p dy --phone 13800138000
 ```
 
 若 stdout 不是 TTY（如管道重定向），终端截图可能无法正常展示，请在可交互终端中执行。参数见 `cli login --help`。成功后再执行 `cli publish`。
@@ -73,7 +73,7 @@ xvfb-run -a ./矩媒.AppImage cli login -p dy --phone 13800138000
 electron . cli publish -p dy --phone 13800138000 -f /path/to/video.mp4 -t "标题"
 
 # Windows 安装包产物
-"矩媒.exe" cli publish -p dy --phone 13800138000 -f C:\video.mp4 -t "标题"
+matrixmedia.exe cli publish -p dy --phone 13800138000 -f C:\video.mp4 -t "标题"
 ```
 
 ### 参数摘要
@@ -106,6 +106,7 @@ electron . cli publish -p dy --phone 13800138000 -f /path/to/video.mp4 -t "标�
 | `--show`                  | 当前 CLI 会忽略，仍后台运行                                                |
 | `--no-close-window`       | CLI 下无效，仅与 GUI 显示窗口场景有关                                      |
 | `--draft`                 | 保存到平台草稿箱，不直接发布                                               |
+| `--cover`                 | 自定义封面图片路径（抖音 / 快手 / 视频号，单文件模式生效；竖封面 3:4 比例最佳，抖音横封面基于竖封面自动生成；视频号仅收 jpg/png；`--dir` 批量模式会忽略并提示） |
 | `--sph-product-id`        | 视频号商品上架快捷参数（商品编号）；其他平台忽略 |
 | `--sph-drama-id` | 视频号小程序短剧挂载快捷参数（**短剧名称**，如 `泳陷错恋`）；其他平台忽略                           |
 | `--sph-series-id` | 视频号剧集挂载快捷参数（**剧集名称**，视频号原生剧集）；其他平台忽略                           |
